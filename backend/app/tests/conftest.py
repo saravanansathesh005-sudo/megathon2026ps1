@@ -16,6 +16,13 @@ os.environ.setdefault("ENVIRONMENT", "test")
 os.environ.setdefault("LOG_LEVEL", "WARNING")
 os.environ.setdefault("APPROVAL_TTL_SECONDS", "180")
 
+# Tests are hermetic: never call the live Gemini or Google APIs, even when a
+# developer .env supplies real credentials. The Gemini boundary is exercised
+# through validate_proposal() and an injected failure instead.
+os.environ["GEMINI_API_KEY"] = ""
+os.environ["GOOGLE_CLIENT_ID"] = ""
+os.environ["GOOGLE_CLIENT_SECRET"] = ""
+
 
 @pytest.fixture(scope="session")
 def test_db_path() -> Path:

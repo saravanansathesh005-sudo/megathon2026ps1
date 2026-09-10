@@ -105,13 +105,25 @@ def validate_proposal(raw: dict | None) -> dict:
         return {"valid": False, "reason": "parameters must be an object"}
     params = {k: v for k, v in params.items() if k not in RESERVED_PARAMS}
 
+    # Resource identifiers are validated, not trusted. Planners routinely return the
+    # ITEM name where the collection belongs ("Megathon" instead of "projects"), so
+    # for actions with a canonical domain the backend supplies it and demotes the
+    # stray value to the item name.
+    canonical = ACTIONS[action].resource
+    normalised = False
+    if canonical:
+        if resource and resource != canonical:
+            params.setdefault("name", resource)
+            normalised = True
+        resource = canonical
+
     summary = raw.get("reasoning_summary") or ""
     if not isinstance(summary, str):
         summary = ""
 
     return {"valid": True, "proposal": {
         "action": action, "resource": resource, "parameters": params,
-        "reasoning_summary": summary[:280],
+        "reasoning_summary": summary[:280], "resource_normalised": normalised,
     }}
 
 

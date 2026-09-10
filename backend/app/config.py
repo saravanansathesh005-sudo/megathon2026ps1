@@ -36,7 +36,7 @@ class Settings(BaseSettings):
 
     # Gemini planning layer. Absent key -> deterministic fallback planner.
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-2.0-flash"
+    GEMINI_MODEL: str = "gemini-3.6-flash"
     GEMINI_TIMEOUT_SECONDS: int = 12
 
     # Google OAuth. Absent client id -> Google sign-in unavailable.
