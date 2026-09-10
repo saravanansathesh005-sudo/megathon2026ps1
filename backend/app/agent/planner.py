@@ -56,6 +56,12 @@ def _workspace_target(text: str) -> str | None:
     return best
 
 
+def _names_a_resource(text: str) -> bool:
+    lowered = (text or "").lower()
+    return any(alias in lowered
+               for aliases in RESOURCE_ALIASES.values() for alias in aliases)         or bool(re.search(r"(table|tables|record|records|database|audit|log|logs)", lowered))
+
+
 def _resource_from(text: str, default: str = "users") -> str:
     lowered = (text or "").lower()
     best, best_pos = default, len(lowered) + 1
@@ -67,13 +73,45 @@ def _resource_from(text: str, default: str = "users") -> str:
     return best
 
 
+CONVERSATIONAL_REPLY = (
+    "I can help you manage your projects, tasks and files. Try "
+    "“Create a project called Megathon”, “Show me my projects”, "
+    "or “Delete the project Portfolio”.")
+
+
 def plan(user_request: str) -> dict:
-    """Turn a natural-language request into a single proposed tool call."""
+    """Turn a natural-language request into a single proposed tool call.
+
+    Returns action "none" when the message is conversation rather than a request to
+    do something. Proposing an action for every utterance is how a greeting ends up
+    reading a production table.
+    """
     text = (user_request or "").strip()
     lowered = text.lower()
-    op = infer_op_class(text) or OP_READ
+    op = infer_op_class(text)
     workspace = _workspace_target(text)
     everything = bool(re.search(r"\b(all|every|everything|entire)\b", lowered))
+    # ------------------------------------------ security-relevant asks come first
+    # These must be classified before the conversational guard, or a bypass
+    # request with no action verb would be answered with small talk.
+    if re.search(r"\b(disable|turn off)\s+(aegis|security)", lowered):
+        return {"action": "disable_security", "resource": "", "parameters": {}}
+    if re.search(r"\b(another|other)\s+user('s)?\s+(data|files?|projects?|account)", lowered):
+        return {"action": "access_other_user_data", "resource": "users", "parameters": {}}
+    if re.search(r"\b(make|grant|give)\s+(me|myself)\s+(an?\s+)?(admin|root)", lowered):
+        return {"action": "escalate_privilege", "resource": "", "parameters": {}}
+    if re.search(r"\b(delete|clear|wipe)\s+(the\s+)?(audit|logs?)\b", lowered):
+        return {"action": "modify_audit_log", "resource": "audit_demo", "parameters": {}}
+
+
+    # No operation verb and nothing actionable named -> the user is talking, not
+    # asking for work. Proposing an action for every utterance is how a greeting
+    # ends up reading a production table.
+    if op is None and workspace is None and not _names_a_resource(text):
+        return {"action": "none", "resource": "", "parameters": {},
+                "reply": CONVERSATIONAL_REPLY}
+    if op is None:
+        op = OP_READ
 
     # ------------------------------------------------------- workspace domain first
     if workspace:
@@ -101,16 +139,6 @@ def plan(user_request: str) -> dict:
             return {"action": "export_data", "resource": workspace,
                     "parameters": {"destination": "mock://export"}}
         return {"action": "list_" + workspace, "resource": workspace, "parameters": {}}
-
-    # ---------------------------------------------------------- explicit bypass asks
-    if re.search(r"\b(disable|turn off)\s+(aegis|security)", lowered):
-        return {"action": "disable_security", "resource": "", "parameters": {}}
-    if re.search(r"\b(another|other)\s+user('s)?\s+(data|files?|projects?|account)", lowered):
-        return {"action": "access_other_user_data", "resource": "users", "parameters": {}}
-    if re.search(r"\b(make|grant|give)\s+(me|myself)\s+(an?\s+)?(admin|root)", lowered):
-        return {"action": "escalate_privilege", "resource": "", "parameters": {}}
-    if re.search(r"\b(delete|clear|wipe)\s+(the\s+)?(audit|logs?)\b", lowered):
-        return {"action": "modify_audit_log", "resource": "audit_demo", "parameters": {}}
 
     # ------------------------------------------------------------- legacy data plane
     resource = _resource_from(text)

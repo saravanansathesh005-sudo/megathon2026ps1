@@ -86,7 +86,7 @@ export default function Assistant() {
         kind: r.kind, action_id: r.action_id, confirmation: r.confirmation,
         decision: r.decision, proposal: r.proposal,
       }]);
-      if (r.decision === "ALLOW") await run(r.action_id);
+      if (r.decision === "ALLOW" && r.action_id) await run(r.action_id);
       await refreshConvos();
     } catch (e: any) {
       setError(e?.status === 401 ? "Your session expired. Sign in again."

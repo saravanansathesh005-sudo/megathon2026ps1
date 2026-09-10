@@ -369,6 +369,25 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db),
     proposal = gemini.propose(payload.message)
     source = proposal.get("source", "demo-planner")
 
+    # Conversation, not work. No action is proposed, so there is nothing to
+    # authorise and nothing to execute. Recorded, but not as a security decision.
+    if proposal.get("action") == "none":
+        reply = proposal.get("reply") or planner.CONVERSATIONAL_REPLY
+        db.add(Message(conversation_id=convo.id, user_id=identity.user_id,
+                       role="assistant", content=reply, kind="text",
+                       created_at=utc_now()))
+        audit.record(db, event_type="chat.conversational",
+                     username=identity.username, agent_id=identity.agent_id,
+                     session_id=identity.session_id,
+                     detail={"source": source})
+        db.commit()
+        return {"conversation_id": convo.id, "action_id": None, "decision": None,
+                "message": reply, "kind": "text",
+                "proposal": {"action": "none", "resource": "", "parameters": {},
+                             "reasoning_summary": proposal.get("reasoning_summary", ""),
+                             "source": source, "error": proposal.get("error")},
+                "confirmation": None, "block_reason": None, "analysis": None}
+
     result = analysis.analyse(db, identity, payload.message, proposal["action"],
                               proposal.get("resource", ""), proposal.get("parameters", {}))
     result["proposal"] = {"action": proposal["action"],
