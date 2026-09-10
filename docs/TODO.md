@@ -4,6 +4,16 @@
 
 ## P0 — Ratify and confirm (today)
 
+- [ ] **Verify CSTM-Bench access** (arXiv:2604.21131) — licence, download, does it run? This is now
+      our evaluation story (decision 009). If it fails, we fall back to hand-authored trajectories
+      and say so. **Find out before the event, not at hour 20.**
+- [ ] **Learn five names cold:** Akeyless (Agentic Runtime Authority), Zenity, AgentPort, OneCLI,
+      APort. One sentence each on how we differ. Decision 010.
+- [ ] **Read the two primary post-mortems**, not the summaries: the [HF technical timeline](https://huggingface.co/blog/agent-intrusion-technical-timeline)
+      and [Simon Willison's write-up](https://simonwillison.net/2026/Jul/22/openai-cyberattack/).
+      We must discuss these, not just cite them.
+- [ ] Pull the TRACE numbers (F1 0.713 / recall 0.844) into the comparison slide skeleton.
+
 - [ ] **Ratify Track 1 / PS 1 ("Warrant").** Read decision 005 and 006. If anyone on the team cannot
       state the wedge in one sentence, we have not ratified — we have acquiesced.
 - [ ] **Confirm the organizer** — decision 004, open since yesterday. Registration email.

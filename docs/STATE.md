@@ -25,6 +25,28 @@ Reasoning in decision 005; the differentiating insight in decision 006.
 | `docs/TODO.md` | Ratification checklist, pre-event build, hour-by-hour plan. |
 | `src/`, `tests/` | **Empty.** No code, no dependencies, no framework — as instructed. |
 
+## Deep research pass (2026-09-10, evening)
+
+Ran a full incident/prior-art/community/paper sweep on T1-PS1. Six incidents verified and written up
+as the pitch spine (`RESEARCH.md` Part 1). Two claims supplied by the team — Palisade Research and the
+OpenAI ExploitGym → Hugging Face breach — **both verified as real**, with details corrected.
+
+**Three findings changed the plan:**
+
+1. **CSTM-Bench exists** (arXiv:2604.21131) — a public benchmark for cross-session agent threats,
+   including slow-drip injections across 50+ sessions. My earlier claim that no such benchmark existed
+   was **wrong**. We now evaluate on it instead of self-authored data. Decision 009.
+2. **The field is more crowded than assessed this morning.** Akeyless shipped *Agentic Runtime
+   Authority* (GA Sept 2026, "intent-based access control"); AgentPort ships "2FA for destructive ops"
+   — effectively our Layer 2. Differentiation narrowed and hardened. Decision 010.
+3. **Hugging Face's own post-mortem recommends what we are building** — "detection systems capable of
+   correlating activity across multiple systems." Strongest card we hold; put it on a slide verbatim.
+
+**Reddit could not be researched** — blocked to both the crawler and the browser in this environment.
+Hacker News used as the equivalent practitioner community, with named handles and thread links
+(`RESEARCH.md` Part 5). Nothing was fabricated to fill the gap. Paste Reddit threads in if you want
+them analysed.
+
 ## The three things that decide whether this wins
 
 1. **The wedge holds.** Mandate drift, not threat detection. Layers 1 and 2 are prior art — APort,

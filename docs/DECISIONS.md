@@ -183,3 +183,25 @@ it is the scenario that distinguishes us from every funded competitor in the spa
 - **Decision:** Budget explicit hours for the operator console: a live drift graph, a gate queue with human-readable reasons, and the audit trail. The gate's block message must explain *why* in a sentence a non-specialist understands.
 - **Alternatives:** Ship a CLI and narrate it — rejected; forfeits a whole criterion and makes the demo harder to follow from the back of a room.
 - **Consequences:** Roughly 3 of 24 hours go to interface work that adds no enforcement capability. Accepted deliberately.
+
+---
+
+## 009 — Evaluate on CSTM-Bench; retire the "nobody does cross-session" claim
+- **Date:** 2026-09-10 · **Status:** accepted, conditional on access check
+
+- **Context:** Deep research found **CSTM-Bench** ([arXiv:2604.21131](https://arxiv.org/abs/2604.21131), Apr 2026) — a public benchmark for cross-session threats in AI agents, including slow-drip prompt injections distributed across 50+ sessions with one innocuous fragment per interaction. That is precisely our threat model. Also found **TRACE** ([arXiv:2606.07054](https://arxiv.org/abs/2606.07054), F1 0.713 / recall 0.844) and **Trajectory Guard** ([arXiv:2601.00516](https://arxiv.org/pdf/2601.00516)). This **contradicts** the earlier claim in `RESEARCH.md` that no public benchmark existed, on which jury answer Q9 was built.
+- **Decision:**
+  1. Evaluate on CSTM-Bench and report numbers against published baselines, including a comparison row against TRACE. **Verify licence and availability before the event**; if unavailable, fall back to hand-authored trajectories and say so plainly.
+  2. Retire "nobody does cross-session monitoring." Replace with the narrower, true differentiation: (a) these are detectors, we are enforcement middleware with a deterministic gate on the wire; (b) they monitor for threats/injections, we monitor mandate distance, which fires on the **no-attacker** case that has no threat signal; (c) TRACE runs an LLM-in-the-loop judge, our synchronous path stays deterministic and sub-10ms.
+- **Alternatives:** Keep the hand-authored suite and not mention the literature — rejected. A Track 1 judge who has read arXiv would end the Q&A in one question, and "did you invent your eval data?" was already our weakest answer.
+- **Consequences:** Innovation claim narrows and gets **more** defensible. Evaluation strengthens from self-authored to public-benchmark. Adds a pre-event task: confirm CSTM-Bench access. **State the differentiation before a judge raises it.**
+
+---
+
+## 010 — Name the competitors first, unprompted
+- **Date:** 2026-09-10 · **Status:** accepted
+
+- **Context:** The space moved sharply in the weeks before the event. **Akeyless** shipped *Agentic Runtime Authority* (GA Sept 2026) — "real-time intent-based access control" that blocks policy-violating agent actions pre-execution, with Claude Enterprise / OpenAI Codex / Bedrock AgentCore integrations. **CrowdStrike** launched a "Verified Agent" certification the same week. On the OSS side, **AgentPort** (`yakkomajuri`) ships "2FA for destructive ops" — effectively our Layer 2 — and **OneCLI** (YC S26) enforces policy "at the network layer, outside the agent and the LLM."
+- **Decision:** Open the competitive section of the pitch by naming Akeyless, Zenity, AgentPort, OneCLI and APort ourselves, with a one-sentence differentiation each. Every team member must be able to do this cold.
+- **Alternatives:** Wait and respond if asked — rejected. Being told about a competitor by a judge reads as not having done the work; raising it first reads as command of the field.
+- **Consequences:** Costs ~20 seconds of pitch time. Buys the entire Q&A framing. Layer 2 is now explicitly positioned as table stakes with prior art credited, which makes the Layer 3 claim credible rather than grandiose.
