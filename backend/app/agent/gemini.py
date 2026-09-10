@@ -122,9 +122,12 @@ def validate_proposal(raw: dict | None) -> dict:
     # stray value to the item name.
     canonical = ACTIONS[action].resource
     normalised = False
-    if canonical:
+    if canonical is not None:
         if resource and resource != canonical:
-            params.setdefault("name", resource)
+            # The stray value is an item name, not a collection - unless the action
+            # takes no resource at all, in which case it is simply discarded.
+            if canonical:
+                params.setdefault("name", resource)
             normalised = True
         resource = canonical
 
@@ -138,11 +141,20 @@ def validate_proposal(raw: dict | None) -> dict:
     }}
 
 
+def call_json(system_instruction: str, prompt: str) -> tuple[dict | None, str | None]:
+    """Ask Gemini for one JSON object. Returns (parsed, error). Never raises."""
+    return _post(system_instruction, prompt)
+
+
 def _call_gemini(user_request: str) -> tuple[dict | None, str | None]:
+    return _post(_system_instruction(), user_request)
+
+
+def _post(system_instruction: str, prompt: str) -> tuple[dict | None, str | None]:
     url = ENDPOINT.format(model=settings.GEMINI_MODEL)
     body = {
-        "systemInstruction": {"parts": [{"text": _system_instruction()}]},
-        "contents": [{"role": "user", "parts": [{"text": user_request}]}],
+        "systemInstruction": {"parts": [{"text": system_instruction}]},
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "generationConfig": {"temperature": 0, "responseMimeType": "application/json"},
     }
     req = urllib.request.Request(

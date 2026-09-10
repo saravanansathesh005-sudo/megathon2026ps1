@@ -60,6 +60,29 @@ def _workspace_target(text: str) -> str | None:
     return best
 
 
+_REVIEW_ASK = re.compile(
+    r"(analy[sz]e|review|audit|check|scan|inspect)[\w\s,'-]{0,24}"
+    r"(code|script|function|file|snippet|python)|"
+    r"(find|any)[\w\s,'-]{0,16}(risk|vulnerabilit|bug|issue|flaw)s?")
+
+_FENCE = re.compile(r"```(?:python|py)?\s*\n?(.+?)```", re.DOTALL)
+
+
+def _extract_code(text: str) -> str | None:
+    """Return the code to review, or None if this is not a review request."""
+    fenced = _FENCE.search(text)
+    if fenced and fenced.group(1).strip():
+        return fenced.group(1).strip()
+    if not _REVIEW_ASK.search(text.lower()):
+        return None
+    # No fence: take everything after the first colon, if it looks like code.
+    _, sep, rest = text.partition(":")
+    rest = rest.strip()
+    if sep and rest and re.search(r"[=()\[\]:]|\b(def|import|class|return)\b", rest):
+        return rest
+    return None
+
+
 def _distinct_ops(text: str) -> int:
     """How many different operation classes does this message ask for?"""
     lowered = (text or "").lower()
@@ -150,6 +173,14 @@ def plan(user_request: str) -> dict:
     # request with no action verb would be answered with small talk.
     if _BYPASS_ASK.search(lowered):
         return {"action": "disable_security", "resource": "", "parameters": {}}
+    # Code review. Placed ahead of the multi-intent and ambiguity guards because
+    # pasted source almost always contains verbs (create/delete/update) that would
+    # otherwise read as extra instructions.
+    code = _extract_code(text)
+    if code is not None:
+        return {"action": "analyse_code", "resource": "",
+                "parameters": {"code": code}}
+
     if _SENSITIVE_EXFIL.search(lowered):
         return {"action": "export_sensitive", "resource": "", "parameters": {}}
     if re.search(r"\b(another|other)\s+user('s)?\s+(data|files?|projects?|account)", lowered):

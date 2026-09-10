@@ -38,8 +38,10 @@ class ActionSpec:
     rollback_supported: bool
     description: str
     category: str = NORMAL
-    # Canonical resource this action always operates on. None = caller names the
-    # resource (the legacy table-oriented actions).
+    # Canonical resource this action always operates on.
+    #   "name" -> always this resource
+    #   ""     -> this action names no resource at all
+    #   None   -> the caller names the resource (the legacy table-oriented actions)
     resource: str | None = None
 
 
@@ -74,7 +76,9 @@ ACTIONS: dict[str, ActionSpec] = {
     "read_file": ActionSpec("read_file", OP_READ, R0, False, False, "Read a file", NORMAL, "files"),
     "list_files": ActionSpec("list_files", OP_READ, R0, False, False, "List files", NORMAL, "files"),
     "calculate": ActionSpec("calculate", OP_READ, R0, False, False,
-                            "Perform a calculation", NORMAL),
+                            "Perform a calculation", NORMAL, ""),
+    "analyse_code": ActionSpec("analyse_code", OP_READ, R0, False, False,
+                               "Analyse Python code for security risks", NORMAL, ""),
 
     # -------------------------------------------------------------------- B. RISKY work
     "delete_project": ActionSpec("delete_project", OP_DELETE, R2, True, True,
@@ -103,11 +107,11 @@ ACTIONS: dict[str, ActionSpec] = {
     # ------------------------------------------------------------------- D. FORBIDDEN
     # Registered so a proposal for one is named and audited, never merely "unknown".
     "disable_security": ActionSpec("disable_security", OP_DROP, R3, True, False,
-                                   "Disable AEGIS", FORBIDDEN),
+                                   "Disable AEGIS", FORBIDDEN, ""),
     "modify_audit_log": ActionSpec("modify_audit_log", OP_WRITE, R3, True, False,
                                    "Alter audit records", FORBIDDEN),
     "escalate_privilege": ActionSpec("escalate_privilege", OP_WRITE, R3, True, False,
-                                     "Grant self additional privileges", FORBIDDEN),
+                                     "Grant self additional privileges", FORBIDDEN, ""),
     "access_other_user_data": ActionSpec("access_other_user_data", OP_EXPORT, R3, False, False,
                                          "Read another user's protected data", FORBIDDEN),
 }
@@ -118,7 +122,7 @@ ROLES = ("viewer", "editor", "user", "admin", "security_admin")
 _USER_NORMAL = {
     "create_project", "read_project", "list_projects", "update_project",
     "create_task", "list_tasks", "update_task",
-    "create_file", "read_file", "list_files", "calculate",
+    "create_file", "read_file", "list_files", "calculate", "analyse_code",
     "list_tables", "read_table",
 }
 _USER_RISKY = {"delete_project", "delete_task", "delete_file", "move_files",
@@ -138,7 +142,7 @@ RBAC: dict[str, set[str]] = {
         "update_permissions", "update_security_settings",
     },
     # Security admin observes; it never mutates.
-    "security_admin": {"list_tables", "read_table"},
+    "security_admin": {"list_tables", "read_table", "analyse_code"},
 }
 
 # Roles permitted to read the Admin Security Terminal. Observability only.

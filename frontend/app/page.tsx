@@ -11,10 +11,19 @@ const DEMO_ACCOUNTS = [
   { u: "user2", p: "user2123", label: "Ravi Second" },
 ];
 
+const SEV: Record<string, string> = {
+  CRITICAL: "bg-rose-500/15 text-rose-300",
+  HIGH: "bg-orange-500/15 text-orange-300",
+  MEDIUM: "bg-amber-400/15 text-amber-300",
+  LOW: "bg-sky-500/15 text-sky-300",
+  INFO: "bg-slate-500/15 text-slate-400",
+};
+
 const SUGGESTIONS = [
   "Create a project called Megathon",
   "Show me my projects",
   "Delete the project Portfolio",
+  "Analyse this code: eval(user_input)",
 ];
 
 type Msg = {
@@ -26,6 +35,7 @@ type Msg = {
   confirmation?: any;
   decision?: string;
   proposal?: any;
+  review?: any;
   done?: boolean;
 };
 
@@ -150,10 +160,16 @@ export default function Assistant() {
   async function run(actionId: number) {
     try {
       const out = await api.execute(actionId);
+      const review = out.tool_result?.findings ? out.tool_result : null;
       const line = out.commit_status === "rolled_back"
         ? "Verification failed, so I rolled it back. Nothing was changed."
-        : out.execution_status === "executed" ? "Done." : "That didn't complete.";
-      setMsgs((m) => [...m, { id: "r-" + actionId, role: "assistant", content: line, kind: "result" }]);
+        : out.execution_status === "executed"
+          ? (review ? review.summary : "Done.")
+          : "That didn't complete.";
+      setMsgs((m) => [...m, {
+        id: "r-" + actionId, role: "assistant", content: line,
+        kind: review ? "review" : "result", review,
+      }]);
     } catch (e: any) {
       const d = e?.body?.detail;
       setMsgs((m) => [...m, {
@@ -386,6 +402,50 @@ export default function Assistant() {
                             className="rounded-lg border border-white/[0.09] px-4 py-2 text-[12.5px] text-slate-400 transition hover:text-slate-200">
                             Cancel
                           </button>
+                        </div>
+                      </div>
+                    ) : m.kind === "review" ? (
+                      <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
+                        <div className="mb-3 flex flex-wrap items-center gap-2">
+                          <span className="text-[13px] font-semibold text-cyan-300">
+                            Code review
+                          </span>
+                          <span className="text-[11.5px] text-slate-500">
+                            {m.review.lines} lines · {m.review.analysed_by}
+                          </span>
+                          {Object.entries(m.review.counts || {}).map(([sev, n]: any) => (
+                            <span key={sev}
+                              className={"rounded-full px-2 py-0.5 text-[10px] font-semibold " + SEV[sev]}>
+                              {n} {sev}
+                            </span>
+                          ))}
+                        </div>
+                        <p className="mb-3 text-[13.5px] leading-relaxed text-slate-300">
+                          {m.review.summary}
+                        </p>
+                        <div className="space-y-2.5">
+                          {m.review.findings.map((f: any, i: number) => (
+                            <div key={i} className="rounded-xl border border-white/[0.06] bg-black/20 p-3">
+                              <div className="mb-1 flex items-center gap-2">
+                                <span className={"rounded px-1.5 py-0.5 text-[10px] font-bold " + SEV[f.severity]}>
+                                  {f.severity}
+                                </span>
+                                <span className="text-[13px] font-medium text-white">{f.title}</span>
+                                {f.line != null && (
+                                  <span className="text-[11px] text-slate-500">line {f.line}</span>
+                                )}
+                              </div>
+                              <p className="text-[12.5px] leading-relaxed text-slate-400">{f.detail}</p>
+                              {f.fix && (
+                                <p className="mt-1.5 text-[12.5px] leading-relaxed text-cyan-300/80">
+                                  Fix: {f.fix}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                          {m.review.findings.length === 0 && (
+                            <p className="text-[13px] text-emerald-300">No risks found.</p>
+                          )}
                         </div>
                       </div>
                     ) : m.kind === "result" ? (

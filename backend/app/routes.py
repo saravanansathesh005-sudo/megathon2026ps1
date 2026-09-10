@@ -527,6 +527,8 @@ def execute_action(payload: ExecuteRequest, db: Session = Depends(get_db),
 
     if action.conversation_id:
         summary = "Done." if outcome["execution_status"] == "executed" else "That didn't complete."
+        if action.action_name == "analyse_code" and outcome["execution_status"] == "executed":
+            summary = outcome["tool_result"].get("summary", "Review complete.")
         if outcome.get("commit_status") == "rolled_back":
             summary = "Verification failed, so I rolled the change back. Nothing was left changed."
         db.add(Message(conversation_id=action.conversation_id, user_id=identity.user_id,

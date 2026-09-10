@@ -193,6 +193,16 @@ def update_project(db, r, p): return _update_item(db, "projects", p)
 def update_task(db, r, p): return _update_item(db, "tasks", p)
 
 
+def analyse_code(db: Session, resource_name: str, params: dict) -> dict:
+    """Report risks in submitted Python. Reads nothing, writes nothing, runs nothing."""
+    from app.agent import code_review
+
+    code = params.get("code") or params.get("source") or ""
+    if not str(code).strip():
+        raise ToolError("no code supplied to analyse")
+    return code_review.review(str(code))
+
+
 def calculate(db: Session, resource_name: str, params: dict) -> dict:
     return {"expression": params.get("expression", ""), "note": "evaluated by the agent"}
 
@@ -228,6 +238,7 @@ TOOLS = {
     "create_task": create_task, "list_tasks": list_tasks, "update_task": update_task,
     "create_file": create_file, "read_file": read_file, "list_files": list_files,
     "calculate": calculate,
+    "analyse_code": analyse_code,
     "delete_project": delete_project, "delete_task": delete_task, "delete_file": delete_file,
     "move_files": move_files, "bulk_update": bulk_update, "update_config": update_config,
     "delete_all_projects": delete_all_projects,
