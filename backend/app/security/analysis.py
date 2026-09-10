@@ -106,7 +106,7 @@ def _instruction_only(user_request: str, parameters: dict) -> str:
 
 def analyse(db: Session, identity: Identity, user_request: str, action_name: str,
             resource_name: str, parameters: dict | None = None,
-            approval_present: bool = False) -> dict:
+            approval_present: bool = False, file_risk: dict | None = None) -> dict:
     parameters = parameters or {}
     resource = db.scalar(select(Resource).where(Resource.name == resource_name))
     res = resource_dict(resource, resource_name)
@@ -131,6 +131,7 @@ def analyse(db: Session, identity: Identity, user_request: str, action_name: str
     verdict = policy.decide(
         authorization=auth, intent=intent, blast=blast, reversibility=rev,
         trajectory=traj, invariants=inv, resource=res, terms=tc, injection=inject,
+        file_risk=file_risk,
         approval_present=approval_present, confirmation_present=approval_present,
     )
 
@@ -153,5 +154,6 @@ def analyse(db: Session, identity: Identity, user_request: str, action_name: str
         "safety_invariants": inv,
         "terms": tc,
         "injection": inject,
+        "file_risk": file_risk,
         "policy_decision": verdict,
     }

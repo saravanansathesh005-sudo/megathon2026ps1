@@ -54,6 +54,7 @@ def _trajectory_steps(score: int, category: str) -> int:
 def decide(*, authorization: dict, intent: dict, blast: dict, reversibility: dict,
            trajectory: dict, invariants: dict, resource: dict,
            terms: dict | None = None, injection: dict | None = None,
+           file_risk: dict | None = None,
            approval_present: bool = False, confirmation_present: bool = False) -> dict:
     """Return the single authoritative decision plus the reasons behind it."""
     reasons: list[str] = []
@@ -79,6 +80,15 @@ def decide(*, authorization: dict, intent: dict, blast: dict, reversibility: dic
     # evaluate a phantom resource with default (low) risk attributes.
     if resource.get("name") and not resource.get("exists", True):
         reasons.append("there is no resource named '" + str(resource["name"]) + "'")
+        return _verdict(BLOCK, reasons, [], category)
+
+    # A file carrying a CRITICAL indicator is refused whatever the action's own
+    # category is. The evidence comes from filescan, which reads bytes and never
+    # executes anything, so this remains a deterministic check.
+    if file_risk and file_risk.get("highest_severity") == "CRITICAL":
+        for item in file_risk.get("findings", []):
+            if item.get("severity") == "CRITICAL":
+                reasons.append("file risk: " + item.get("title", "critical indicator"))
         return _verdict(BLOCK, reasons, [], category)
 
     if category == FORBIDDEN:
@@ -124,6 +134,10 @@ def decide(*, authorization: dict, intent: dict, blast: dict, reversibility: dic
                 reasons.append(level + " action requires a restorable snapshot")
             if intent["status"] == "SCOPE_EXPANSION":
                 reasons.append("intent scope expansion: " + intent["reason"])
+
+    if file_risk and file_risk.get("highest_severity") == "HIGH" and decision == ALLOW:
+        decision = REQUIRE_CONFIRMATION
+        reasons.append("file carries HIGH severity risk indicators")
 
     # ------------------------------------------------------- trajectory: restrict only
     escalated_by: list[str] = []

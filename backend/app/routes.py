@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy import func, select
@@ -25,7 +25,7 @@ from app.models import (
     Action, ActionEvent, ApprovalRequest, Conversation, Message, Resource,
     SecurityRestriction, User, UserSession,
 )
-from app.security import analysis, google_auth
+from app.security import analysis, filescan, google_auth
 from app.security.identity import (
     Identity, authenticate, create_token, current_identity, new_session_id,
     require_observer, upsert_google_user,
@@ -489,6 +489,102 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db),
         "block_reason": _friendly_block_reason(action.analysis) if decision == BLOCK else None,
         "analysis": action.analysis,
     }
+
+
+# =============================================================== file scanning
+
+@router.post("/files/scan")
+async def scan_upload(file: UploadFile = File(...), conversation_id: int | None = None,
+                      db: Session = Depends(get_db),
+                      identity: Identity = Depends(current_identity)):
+    """Inspect an uploaded file and let the policy engine rule on it.
+
+    The bytes are read into memory, scanned, and dropped. Nothing is written to
+    disk, nothing is executed, and nothing leaves this process - so a hostile
+    upload has no path to execution even if every check below failed to name it.
+
+    The scan is evidence. The decision is the policy engine's, exactly as it is
+    for any other action.
+    """
+    raw = await file.read(filescan.MAX_FILE_BYTES + 1)
+    if not raw:
+        raise HTTPException(status_code=400, detail="the uploaded file is empty")
+
+    name = (file.filename or "unnamed")[:200]
+    scan = filescan.scan(name, raw)
+    del raw  # the bytes are not needed past this point and are not retained
+
+    request_text = "scan the uploaded file " + name
+    result = analysis.analyse(
+        db, identity, request_text, "scan_file", "",
+        {"filename": name, "sha256": scan["sha256"], "size_bytes": scan["size_bytes"],
+         "detected_type": scan["detected_type"]},
+        file_risk=scan)
+    result["proposal"] = {"action": "scan_file", "resource": "",
+                          "parameters": {"filename": name},
+                          "reasoning_summary": "file submitted for inspection",
+                          "source": "upload", "error": None}
+    action = _persist(db, identity, result, request_text,
+                      conversation_id=conversation_id, proposal_source="upload")
+
+    decision = action.analysis["policy_decision"]["decision"]
+    audit.record(db, event_type="file.scanned", action_id=action.id,
+                 username=identity.username, agent_id=identity.agent_id,
+                 session_id=identity.session_id, action_name="scan_file",
+                 resource_name="", decision=decision,
+                 detail={"filename": name, "sha256": scan["sha256"],
+                         "size_bytes": scan["size_bytes"],
+                         "detected_type": scan["detected_type"],
+                         "highest_severity": scan["highest_severity"],
+                         "counts": scan["counts"]})
+
+    if conversation_id:
+        convo = _own_conversation(db, identity, conversation_id)
+        db.add(Message(conversation_id=convo.id, user_id=identity.user_id,
+                       role="user", content="Uploaded " + name, kind="text",
+                       created_at=utc_now()))
+        db.add(Message(conversation_id=convo.id, user_id=identity.user_id,
+                       role="assistant", content=scan["summary"], kind="filescan",
+                       action_id=action.id, created_at=utc_now()))
+        convo.updated_at = utc_now()
+    db.commit()
+
+    return {
+        "action_id": action.id,
+        "decision": decision,
+        "accepted": decision != BLOCK,
+        "scan": scan,
+        "reasons": action.analysis["policy_decision"]["reasons"],
+        "conversation_id": conversation_id,
+    }
+
+
+@router.get("/admin/security/files")
+def security_files(limit: int = 100, db: Session = Depends(get_db),
+                   identity: Identity = Depends(require_observer)):
+    """Every file ever submitted, with its hash and the verdict AEGIS reached."""
+    rows = db.scalars(select(Action).where(Action.action_name == "scan_file")
+                      .order_by(Action.id.desc()).limit(limit)).all()
+    files = []
+    for a in rows:
+        scan = (a.analysis or {}).get("file_risk") or {}
+        files.append({
+            "action_id": a.id,
+            "at": a.created_at.isoformat() if a.created_at else None,
+            "username": a.username,
+            "filename": scan.get("filename"),
+            "sha256": scan.get("sha256"),
+            "size_bytes": scan.get("size_bytes"),
+            "detected_label": scan.get("detected_label"),
+            "extension": scan.get("extension"),
+            "entropy": scan.get("entropy"),
+            "highest_severity": scan.get("highest_severity"),
+            "counts": scan.get("counts") or {},
+            "finding_count": len(scan.get("findings") or []),
+            "decision": a.decision,
+        })
+    return {"files": files, "read_only": True,
+            "note": "Files are inspected in memory and never stored."}
 
 
 # =================================================================== execution

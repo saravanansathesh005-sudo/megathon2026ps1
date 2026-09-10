@@ -79,6 +79,8 @@ ACTIONS: dict[str, ActionSpec] = {
                             "Perform a calculation", NORMAL, ""),
     "analyse_code": ActionSpec("analyse_code", OP_READ, R0, False, False,
                                "Analyse Python code for security risks", NORMAL, ""),
+    "scan_file": ActionSpec("scan_file", OP_READ, R0, False, False,
+                            "Scan an uploaded file for risk indicators", NORMAL, ""),
 
     # -------------------------------------------------------------------- B. RISKY work
     "delete_project": ActionSpec("delete_project", OP_DELETE, R2, True, True,
@@ -122,7 +124,7 @@ ROLES = ("viewer", "editor", "user", "admin", "security_admin")
 _USER_NORMAL = {
     "create_project", "read_project", "list_projects", "update_project",
     "create_task", "list_tasks", "update_task",
-    "create_file", "read_file", "list_files", "calculate", "analyse_code",
+    "create_file", "read_file", "list_files", "calculate", "analyse_code", "scan_file",
     "list_tables", "read_table",
 }
 _USER_RISKY = {"delete_project", "delete_task", "delete_file", "move_files",
@@ -142,7 +144,7 @@ RBAC: dict[str, set[str]] = {
         "update_permissions", "update_security_settings",
     },
     # Security admin observes; it never mutates.
-    "security_admin": {"list_tables", "read_table", "analyse_code"},
+    "security_admin": {"list_tables", "read_table", "analyse_code", "scan_file"},
 }
 
 # Roles permitted to read the Admin Security Terminal. Observability only.

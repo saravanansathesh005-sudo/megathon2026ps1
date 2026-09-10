@@ -31,6 +31,26 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   return body as T;
 }
 
+/** Multipart upload.
+ *
+ * Deliberately does NOT set Content-Type: the browser has to write it itself so
+ * it can include the multipart boundary. Setting it here produces a body the
+ * server cannot parse.
+ */
+async function upload<T>(path: string, file: File): Promise<T> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(BASE + path, {
+    method: "POST",
+    headers: { ...(token ? { Authorization: "Bearer " + token } : {}) },
+    body: form,
+  });
+  const text = await res.text();
+  const body = text ? JSON.parse(text) : null;
+  if (!res.ok) throw Object.assign(new Error("upload failed"), { status: res.status, body });
+  return body as T;
+}
+
 export const api = {
   authConfig: () => call<any>("/api/auth/config"),
   googleStart: () => call<any>("/api/auth/google/start"),
@@ -59,6 +79,10 @@ export const api = {
     call<any>("/api/actions/execute", { method: "POST", body: JSON.stringify({ action_id }) }),
 
   // Admin Security Terminal - read only. No write endpoints exist.
+  scanFile: (file: File, conversationId?: number | null) =>
+    upload<any>("/api/files/scan" + (conversationId ? "?conversation_id=" + conversationId : ""),
+                file),
+
   secOverview: () => call<any>("/api/admin/security/overview"),
   secEvents: (q = "") => call<any>("/api/admin/security/events" + q),
   secEvent: (id: number) => call<any>("/api/admin/security/events/" + id),
@@ -66,6 +90,7 @@ export const api = {
   secTrajectory: (userId: number) =>
     call<any>("/api/admin/security/users/" + userId + "/trajectory"),
   secAudit: () => call<any>("/api/admin/security/audit"),
+  secFiles: () => call<any>("/api/admin/security/files"),
 
   reset: () => call<any>("/api/demo/reset", { method: "POST" }),
 };

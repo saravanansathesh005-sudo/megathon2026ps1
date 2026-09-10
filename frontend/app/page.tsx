@@ -60,6 +60,15 @@ function Pencil({ size = 14 }: { size?: number }) {
   );
 }
 
+function Clip({ size = 17 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M20 11.5l-7.6 7.6a4.6 4.6 0 1 1-6.5-6.5l7.9-7.9a3 3 0 1 1 4.3 4.3l-7.9 7.9a1.5 1.5 0 0 1-2.1-2.1l7.2-7.2"
+        stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function GoogleMark() {
   return (
     <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
@@ -93,6 +102,8 @@ export default function Assistant() {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [editing, setEditing] = useState<number | string | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const picker = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -238,6 +249,38 @@ export default function Assistant() {
     await send(text);
   }
 
+  /** Submit a file for inspection.
+   *
+   * The bytes go to AEGIS, which reads them and decides. Nothing is executed here
+   * and nothing is stored - the verdict and the hash are what come back.
+   */
+  async function scanFile(file: File) {
+    if (busy) return;
+    setBusy(true); setError(null);
+    const localId = "u-" + Date.now();
+    setMsgs((m) => [...m, { id: localId, role: "user", content: "Uploaded " + file.name }]);
+    try {
+      const r = await api.scanFile(file, convoId);
+      if (r.conversation_id) setConvoId(r.conversation_id);
+      setMsgs((m) => [...m, {
+        id: "fs-" + r.action_id, role: "assistant", content: r.scan.summary,
+        kind: "filescan", action_id: r.action_id, decision: r.decision, review: r.scan,
+      }]);
+      await refreshConvos();
+    } catch (e: any) {
+      setError(e?.body?.detail || "That file could not be scanned.");
+      setMsgs((m) => m.filter((x) => x.id !== localId));
+    }
+    setBusy(false);
+  }
+
+  function onDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) scanFile(file);
+  }
+
   const font = "font-['Outfit',ui-sans-serif,system-ui,sans-serif]";
 
   // ================================================================== sign in
@@ -374,7 +417,17 @@ export default function Assistant() {
         </div>
       </aside>
 
-      <section className="flex min-w-0 flex-1 flex-col">
+      <section className="relative flex min-w-0 flex-1 flex-col"
+        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={(e) => { if (e.currentTarget === e.target) setDragging(false); }}
+        onDrop={onDrop}>
+        {dragging && (
+          <div className="pointer-events-none absolute inset-3 z-20 grid place-items-center rounded-2xl border-2 border-dashed border-cyan-400/50 bg-slate-950/80">
+            <p className="text-[14px] font-medium text-cyan-300">
+              Drop a file — AEGIS will scan it before anything else happens
+            </p>
+          </div>
+        )}
         <div className="no-scrollbar fade-bottom flex-1 overflow-y-auto overflow-x-hidden px-5 pb-16 pt-10">
           <div className="mx-auto w-full max-w-[720px]">
             {msgs.length === 0 ? (
@@ -527,6 +580,86 @@ export default function Assistant() {
                           )}
                         </div>
                       </div>
+                    ) : m.kind === "filescan" && m.review ? (
+                      <div className={"rounded-2xl border p-4 " + (
+                        m.decision === "BLOCK" ? "border-rose-500/25 bg-rose-500/[0.06]"
+                        : m.decision === "REQUIRE_CONFIRMATION" ? "border-amber-400/25 bg-amber-400/[0.05]"
+                        : "border-emerald-500/20 bg-emerald-500/[0.05]")}>
+                        <div className="mb-2 flex flex-wrap items-center gap-2">
+                          <span className={"text-[13px] font-semibold " + (
+                            m.decision === "BLOCK" ? "text-rose-300"
+                            : m.decision === "REQUIRE_CONFIRMATION" ? "text-amber-300"
+                            : "text-emerald-300")}>
+                            {m.decision === "BLOCK" ? "File rejected"
+                              : m.decision === "REQUIRE_CONFIRMATION" ? "File needs review"
+                              : "File accepted"}
+                          </span>
+                          <span className="wrap-any min-w-0 text-[13px] text-white">
+                            {m.review.filename}
+                          </span>
+                          {Object.entries(m.review.counts || {}).map(([sev, c]: any) => (
+                            <span key={sev}
+                              className={"rounded-full px-2 py-0.5 text-[10px] font-semibold " + SEV[sev]}>
+                              {c} {sev}
+                            </span>
+                          ))}
+                        </div>
+
+                        <dl className="mb-3 grid grid-cols-2 gap-x-4 gap-y-1 text-[11.5px] sm:grid-cols-4">
+                          <div><dt className="text-slate-500">Actually is</dt>
+                            <dd className="wrap-any text-slate-300">{m.review.detected_label}</dd></div>
+                          <div><dt className="text-slate-500">Size</dt>
+                            <dd className="text-slate-300 tabular-nums">
+                              {(m.review.size_bytes / 1024).toFixed(1)} KB</dd></div>
+                          <div><dt className="text-slate-500">Entropy</dt>
+                            <dd className="text-slate-300 tabular-nums">{m.review.entropy} / 8.0</dd></div>
+                          <div className="col-span-2 sm:col-span-1">
+                            <dt className="text-slate-500">SHA-256</dt>
+                            <dd className="wrap-any font-mono text-[10.5px] text-slate-400">
+                              {String(m.review.sha256).slice(0, 24)}…</dd></div>
+                        </dl>
+
+                        <p className="wrap-any mb-3 text-[13.5px] leading-relaxed text-slate-300">
+                          {m.review.summary}
+                        </p>
+
+                        <div className="space-y-2.5">
+                          {(m.review.findings || []).map((f: any, i: number) => (
+                            <div key={i} className="rounded-xl border border-white/[0.06] bg-black/25 p-3">
+                              <div className="mb-1 flex flex-wrap items-center gap-2">
+                                <span className={"rounded px-1.5 py-0.5 text-[10px] font-bold " + SEV[f.severity]}>
+                                  {f.severity}
+                                </span>
+                                <span className="wrap-any min-w-0 text-[13px] font-medium text-white">
+                                  {f.title}
+                                </span>
+                              </div>
+                              <p className="wrap-any text-[12.5px] leading-relaxed text-slate-400">
+                                {f.detail}
+                              </p>
+                              {f.evidence && (
+                                <pre className="wrap-any mt-1.5 overflow-x-auto rounded bg-black/40 px-2 py-1 font-mono text-[11px] text-rose-300/90">
+                                  {f.evidence}
+                                </pre>
+                              )}
+                              {f.fix && (
+                                <p className="wrap-any mt-1.5 text-[12.5px] leading-relaxed text-cyan-300/80">
+                                  {f.fix}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                          {(m.review.findings || []).length === 0 && (
+                            <p className="text-[13px] text-emerald-300">
+                              No risk indicators found.
+                            </p>
+                          )}
+                        </div>
+
+                        <p className="mt-3 text-[11px] text-slate-500">
+                          Inspected in memory. The file was never stored or run.
+                        </p>
+                      </div>
                     ) : m.kind === "result" ? (
                       <p className="wrap-any flex items-center gap-2 text-[14px] text-cyan-300/90">
                         <span className="text-[15px] leading-none">✓</span> {m.content}
@@ -553,7 +686,24 @@ export default function Assistant() {
 
         <div className="px-5 pb-7">
           <div className="mx-auto w-full max-w-[720px]">
-            <div className="flex items-end gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.03] py-2.5 pl-5 pr-2.5 transition focus-within:border-cyan-400/30">
+            <div className="flex items-end gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.03] py-2.5 pl-2.5 pr-2.5 transition focus-within:border-cyan-400/30">
+              <input
+                ref={picker}
+                type="file"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) scanFile(file);
+                  e.target.value = "";   // let the same file be picked twice
+                }} />
+              <button
+                onClick={() => picker.current?.click()}
+                disabled={busy}
+                aria-label="Attach a file to scan"
+                title="Attach a file to scan"
+                className="mb-1 shrink-0 rounded-lg p-2 text-slate-500 transition hover:bg-white/[0.06] hover:text-slate-200 disabled:opacity-30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400">
+                <Clip />
+              </button>
               <textarea
                 ref={box}
                 rows={1}

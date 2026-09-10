@@ -13,7 +13,7 @@ import { api, BAND_STYLE, DECISION_STYLE, loadToken, SEVERITY_STYLE, setToken } 
  * a security control, so the gate is server-side (require_observer).
  */
 
-const TABS = ["Overview", "Events", "Users", "Audit"] as const;
+const TABS = ["Overview", "Events", "Files", "Users", "Audit"] as const;
 
 function Row({ k, v, accent }: any) {
   return (
@@ -44,6 +44,7 @@ export default function SecurityTerminal() {
   const [events, setEvents] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [audit, setAudit] = useState<any>(null);
+  const [files, setFiles] = useState<any[]>([]);
   const [detail, setDetail] = useState<any>(null);
   const [history, setHistory] = useState<any>(null);
   const [filter, setFilter] = useState("");
@@ -51,10 +52,11 @@ export default function SecurityTerminal() {
   const [signInError, setSignInError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const [o, e, u, a] = await Promise.all([
-      api.secOverview(), api.secEvents(), api.secUsers(), api.secAudit(),
+    const [o, e, u, a, f] = await Promise.all([
+      api.secOverview(), api.secEvents(), api.secUsers(), api.secAudit(), api.secFiles(),
     ]);
     setOverview(o); setEvents(e.events); setUsers(u.users); setAudit(a);
+    setFiles(f.files);
   }, []);
 
   useEffect(() => {
@@ -270,6 +272,58 @@ export default function SecurityTerminal() {
           </div>
         )}
 
+        {tab === "Files" && (
+          <div className="space-y-3">
+            <div className="rounded border border-slate-800 bg-slate-900/40 p-3 text-[11px] text-slate-400">
+              Every file submitted for inspection, with the hash AEGIS computed and the
+              verdict it reached. Files are read in memory and never stored, so this
+              table is the only record that one was seen.
+            </div>
+            <div className="overflow-x-auto rounded border border-slate-800">
+              <table className="w-full text-[11px]">
+                <thead className="bg-slate-900/60 text-[9px] uppercase tracking-wider text-slate-500">
+                  <tr>{["id", "user", "filename", "actually is", "entropy", "findings",
+                        "decision", "sha-256"].map((h) =>
+                    <th key={h} className="px-2 py-2 text-left whitespace-nowrap">{h}</th>)}</tr>
+                </thead>
+                <tbody>
+                  {files.map((f) => (
+                    <tr key={f.action_id}
+                      onClick={() => pick(f.action_id, "Files")}
+                      className="cursor-pointer border-t border-slate-900 hover:bg-slate-900/50">
+                      <td className="px-2 py-1 text-slate-600">{f.action_id}</td>
+                      <td className="px-2 py-1">{f.username}</td>
+                      <td className="px-2 py-1 text-slate-200">{f.filename}</td>
+                      <td className="px-2 py-1 text-slate-400">{f.detected_label}</td>
+                      <td className="px-2 py-1 tabular-nums text-slate-400">{f.entropy}</td>
+                      <td className="px-2 py-1">
+                        {f.finding_count === 0
+                          ? <span className="text-emerald-400">none</span>
+                          : <span className={SEVERITY_STYLE[f.highest_severity] || "text-slate-300"}>
+                              {f.finding_count} · {f.highest_severity}
+                            </span>}
+                      </td>
+                      <td className={"px-2 py-1 font-semibold " + (
+                        f.decision === "BLOCK" ? "text-rose-400"
+                        : f.decision === "REQUIRE_CONFIRMATION" ? "text-amber-400"
+                        : "text-emerald-400")}>{f.decision}</td>
+                      <td className="px-2 py-1 font-mono text-[10px] text-slate-600">
+                        {String(f.sha256 || "").slice(0, 16)}
+                      </td>
+                    </tr>
+                  ))}
+                  {files.length === 0 && (
+                    <tr><td colSpan={8} className="px-2 py-6 text-center text-slate-600">
+                      No files have been submitted yet.
+                    </td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {detail && <EventDetail detail={detail} />}
+          </div>
+        )}
+
         {tab === "Audit" && audit && (
           <div className="space-y-3">
             <div className={"rounded border p-3 text-xs " + (audit.chain.valid
@@ -305,7 +359,11 @@ export default function SecurityTerminal() {
     </main>
   );
 
-  async function pick(id: number) { setDetail(await api.secEvent(id)); setTab("Events"); }
+  /** Show one event's full analysis without leaving the tab the row was clicked in. */
+  async function pick(id: number, stayOn?: (typeof TABS)[number]) {
+    setDetail(await api.secEvent(id));
+    setTab(stayOn ?? "Events");
+  }
   async function showTrajectory(userId: number) { setHistory(await api.secTrajectory(userId)); }
 
   /** Observer sign-in. The backend still decides whether this account may observe. */
