@@ -4,61 +4,54 @@
 
 ## Phase
 
-`BLOCKED — awaiting official problem statement`
+`STRATEGY COMPLETE — awaiting team ratification before any code`
 
-## The blocker
+## What happened
 
-The eight-phase strategy pipeline (decomposition → research → 10 solutions → adversarial review →
-winner → blueprint → jury prep) was requested on 2026-09-10. It could not be run.
+The official statement arrived: **13 problem statements across 4 tracks** (Cybersecurity, Reverse
+Logistics, GeriCare, AI for Humanity). Phases 1–8 of the strategy pipeline were run in full.
 
-`docs/PROBLEM.md` is **byte-identical to the scaffold** committed in `d457a0a`:
+**Selected: Track 1, PS 1 — Runtime Security Harness for AI Agents.** Concept name **Warrant**.
+Reasoning in decision 005; the differentiating insight in decision 006.
 
-```
-git diff d457a0a -- docs/PROBLEM.md   # returns nothing
-git status                            # working tree clean
-```
+## Where things stand
 
-The verbatim block still reads `_(paste here — unedited)_`. A filesystem search across the project,
-Downloads, Desktop and Documents for `*megathon*` and `*problem*statement*` found no statement file.
+| Document | State |
+| --- | --- |
+| `docs/PROBLEM.md` | Official statement, verbatim. **Unmodified — do not edit.** |
+| `docs/RESEARCH.md` | Complete. Fact-check of the brief, the unifying thesis across all 13 PSes, organizer intel, GitHub/competitor research, resources, and the 20 jury questions with answers. |
+| `docs/ARCHITECTURE.md` | Complete blueprint A–Z for Warrant. Designed, **not built**. |
+| `docs/DECISIONS.md` | 001–008. Decisions 005–008 carry the selection, the wedge, the deterministic-core rule, and the console budget. |
+| `docs/TODO.md` | Ratification checklist, pre-event build, hour-by-hour plan. |
+| `src/`, `tests/` | **Empty.** No code, no dependencies, no framework — as instructed. |
 
-**Nothing was invented to fill the gap.** Phases 1–7 are entirely downstream of the statement text;
-running them against a guessed domain would produce fiction shaped like strategy, and would violate
-rule 1 of `CLAUDE.md`.
+## The three things that decide whether this wins
 
-## What exists
+1. **The wedge holds.** Mandate drift, not threat detection. Layers 1 and 2 are prior art — APort,
+   Zenity, Lasso all ship equivalents. Every innovation claim rides on Layer 3. If drift scoring
+   produces no usable signal, the concept collapses to a competent reimplementation of existing
+   products.
+2. **Scene 2 exists.** The legitimate engineer who escalates, hits the gate, confirms, and continues.
+   The brief says explicitly that a wall is not a solution. Most teams will demo only the block.
+3. **Nobody cites the Pinecone number.** It failed verification (`docs/RESEARCH.md` Part 0). In a
+   cybersecurity track, one false statistic on a slide ends the Q&A badly.
 
-- Committed workspace skeleton: `.claude/`, `docs/`, `src/`, `tests/` (commit `d457a0a`)
-- `docs/RESEARCH.md` — **organizer intelligence complete** (sourced): format, scale, judging shape,
-  sponsor patterns, the on-the-spot-statement finding, rubric decode, and the hour-0 research playbook
-- `docs/DECISIONS.md` — decisions 001–003 recorded
-- `docs/TODO.md` — intake checklist and pre-statement readiness backlog
-- `docs/ARCHITECTURE.md` — still a scaffold; cannot be designed without the domain
+## Open items requiring a human
 
-## What does not exist
-
-- The problem statement
-- Any domain research (Tracks A–E findings sections are deliberately empty)
-- Any solution concept, architecture, or jury answer
-- Any application code, dependency, or framework — as instructed
-
-## Key finding driving everything
-
-Megathon 2025 stated: **"The problem statement will be given on the spot."**
-([megathon.in](https://megathon.in/))
-
-If that holds for '26, pre-building a *solution* is impossible and pre-building *readiness* is the
-entire game. See `docs/RESEARCH.md` Part 1 and decision 003.
+- [ ] **Ratify the PS choice.** Decision 005 is accepted-pending-team-ratification. This is a
+      one-way door once the clock starts.
+- [ ] **Confirm the organizer** (decision 004, open since yesterday). All format intelligence assumes
+      E-Cell IIIT Hyderabad. Five minutes with the registration email.
+- [ ] **Confirm the event format:** is the statement released in advance (it evidently was, this
+      time) or on the spot? This changes how much can be pre-built and supersedes decision 003.
+- [ ] **Verify** the $101bn return-fraud and 53M-caregiver figures if either alternative PS is revived.
 
 ## Immediate next action
 
-**One of these two, from you:**
+Ratify decision 005, then start the pre-event work in `docs/TODO.md` P1 — the proxy substrate and
+scenario harness are domain-independent within this PS and can be built before the clock starts.
 
-1. Paste the official statement verbatim into `docs/PROBLEM.md` → I run Phases 1–8 in a single pass.
-2. Confirm the statement is released on the spot → we pivot to the readiness backlog in `docs/TODO.md`
-   (domain-independent scaffold, hour-0 drill, rehearsed pitch) and run Phases 1–7 live on the day.
-
-Also needed either way: confirm this is **E-Cell IIIT Hyderabad's Megathon**. All organizer
-intelligence in `docs/RESEARCH.md` rests on that assumption.
+**No application code until ratification.**
 
 ---
 
@@ -66,5 +59,6 @@ intelligence in `docs/RESEARCH.md` rests on that assumption.
 
 | Date | Change |
 | --- | --- |
-| 2026-09-10 | Workspace initialised, first commit `d457a0a`. |
-| 2026-09-10 | Strategy pipeline requested; blocked on missing statement. Organizer intelligence + research playbook written instead. Decisions 002–003 recorded. |
+| 2026-09-10 | Workspace initialised, commit `d457a0a`. |
+| 2026-09-10 | Strategy pipeline requested; blocked on missing statement. Organizer intelligence and hour-0 playbook written instead. Decisions 002–004. |
+| 2026-09-10 | Statement received (13 PSes / 4 tracks). Phases 1–8 run. Track 1 PS 1 selected; "Warrant" blueprint complete. Decisions 005–008. |

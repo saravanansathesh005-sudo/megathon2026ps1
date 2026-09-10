@@ -1,51 +1,61 @@
 # TODO
 
-> Ordered by what unblocks the most. Everything under "Blocked" stays blocked until the statement lands.
+> **Nothing in P1 or below starts until decision 005 is ratified.** No application code before then.
 
-## P0 — Unblock (do today)
+## P0 — Ratify and confirm (today)
 
-- [ ] **Paste the official MEGATHON'26 statement verbatim into `docs/PROBLEM.md`** — or confirm it is released on the spot
-- [ ] **Confirm the organizer is E-Cell IIIT Hyderabad** (registration email / event page) → resolves decision 004
-- [ ] Confirm the rules we currently only have from the 2025 edition: duration, team size, eligibility, submission format, AI-tool citation policy
-- [ ] Confirm the judging format: is there a filtering round before the pitch, and how long is the pitch + Q&A?
-- [ ] Get the official judging rubric with weightings, if published
+- [ ] **Ratify Track 1 / PS 1 ("Warrant").** Read decision 005 and 006. If anyone on the team cannot
+      state the wedge in one sentence, we have not ratified — we have acquiesced.
+- [ ] **Confirm the organizer** — decision 004, open since yesterday. Registration email.
+- [ ] **Confirm the format:** statement in advance (evidently yes this time) or on the spot? How long
+      is the pitch, is there a filtering round, what is the submission artifact?
+- [ ] **Assign roles now, not at hour 3:** proxy/policy · trajectory worker · console · demo+deck owner.
+- [ ] Strike the Pinecone statistic from any material anyone has already drafted.
 
-## P1 — Readiness backlog (domain-independent, safe to build now)
+## P1 — Pre-event build (domain-independent *within this PS*)
 
-Rationale in decision 003. Every hour spent here is an hour not spent on setup during the 24.
+Legitimate to build before the clock, because it is substrate, not solution.
 
-- [ ] **Hour-0 drill.** Run a timed dry run on a *past* statement (2023's edge-LLM medical query system works well): statement → decomposition → wedge → scope cut, in 90 minutes. Practise the thing that actually decides the outcome.
-- [ ] **Scaffold, unbuilt but chosen.** Lock the domain-independent stack in a decision entry: auth provider, Postgres host, deploy target, CI. Do not write app code — just remove the decisions from the critical path.
-- [ ] **LLM wrapper design.** Sketch the contract: primary provider, fallback key on a *different* provider, response cache, deterministic replay mode for the demo. This is the single highest-value pre-built component.
-- [ ] **Seed + demo harness plan.** How we load fake-but-plausible data fast, and how we screen-record the demo the moment it works.
-- [ ] **Pitch skeleton.** Problem → stakes → live demo → proof → ask. Domain-agnostic; only the nouns change on the day.
-- [ ] **Jury Q&A rehearsal set.** The twenty standard questions (why AI, why not a normal app, data source, accuracy, hallucination, cost, latency, security, privacy, scale, competitors, offline, adoption, failure modes) — draft the *structure* of each answer now, fill the specifics on the day.
-- [ ] **Role assignment.** Who decomposes, who builds backend, who builds UI, who owns the demo and the deck. Decide before the clock, not at hour 3.
-- [ ] *(Bounded exception, decision 003)* Skim Bhashini API docs and one on-device inference runtime — the two recurring sponsor archetypes.
+- [ ] Repo scaffold + Docker Compose (FastAPI, Postgres+pgvector, React) — one command to running
+- [ ] Push-to-deploy pipeline, green, before the event
+- [ ] MCP proxy skeleton that passes traffic through unmodified
+- [ ] Append-only audit log schema with an insert-only grant
+- [ ] Local embedding model downloaded and pinned **offline**
+- [ ] Scenario harness: replay a scripted tool-call sequence from a file
+- [ ] Q&A drill — every member answers Q1–Q5 from `RESEARCH.md` Part 6 aloud, no notes
+- [ ] Read the four verified incident write-ups so we can discuss them, not just cite them
 
-## P2 — Blocked on the problem statement
+## P2 — The 24 hours
 
-Runs as a single pass once `docs/PROBLEM.md` is filled.
+Full hour-by-hour table in `docs/ARCHITECTURE.md` § T. Non-negotiables:
 
-- [ ] Phase 1 — decomposition (16 points, FACT/INFERENCE/ASSUMPTION/PREDICTION separated)
-- [ ] Phase 2 — research Tracks A–E, per the playbook in `docs/RESEARCH.md` Part 3
-- [ ] Phase 3 — 10 substantially different concepts, each scored /100 across the 10 criteria
-- [ ] Phase 4 — adversarial review of the top 3 (15 attack questions each)
-- [ ] Phase 5 — select the winner, with an explicit argument against the other nine
-- [ ] Phase 6 — full blueprint A–Z
-- [ ] Phase 7 — top 20 jury questions with honest answers
-- [ ] Phase 8 — write results into `ARCHITECTURE.md`, and update `RESEARCH.md` Part 4, `STATE.md`, `DECISIONS.md`, `TODO.md`
+- [ ] **Hour 10 — scenario 3 works end-to-end and is screen-recorded.** Recording before features.
+- [ ] **Hour 12 checkpoint — is drift scoring producing a usable signal?** If no, pivot to concept 2
+      (Provenance, T1-PS2) on the same proxy substrate. Survivable at hour 12; fatal at hour 20.
+- [ ] **Hour 20 — evaluation script produces real numbers:** attack-stop rate, false-gate rate,
+      p50/p95 latency. Numbers on the slide, not adjectives.
+- [ ] **Hour 21 — feature freeze.** Two clean full runs from a reset state.
+- [ ] **Hour 22–24 — deck and Q&A drill.** Not more code.
 
-## P3 — During the 24 hours
+## P3 — Demo must-haves
 
-- [ ] Deploy something end-to-end by hour 12, however thin
-- [ ] Record the demo the first time it works — before adding anything else
-- [ ] Freeze features at hour 18; hours 18–24 are integration, rehearsal and the deck
-- [ ] Cite AI tool usage in the submission, per the organizer's policy
+- [ ] Scene 2 (legitimate escalation passing) — the scene that proves it is not a wall
+- [ ] Scene 3 (no attacker at all) — the scene that separates us from Zenity/Lasso/Noma
+- [ ] Gate block messages readable by a non-specialist
+- [ ] Console legible from the back of the room
+- [ ] Runs with wifi off, and we say so on stage
+- [ ] AI tool usage cited in the submission, per organizer policy
+
+## P4 — Deliberately not building
+
+Recorded so nobody relitigates at hour 15: real IdP/OIDC · multi-tenancy · full MCP spec coverage ·
+Kubernetes/HA · mobile · policy DSL editor · learned reversibility from telemetry · anything needing
+an external dataset.
 
 ## Done
 
-- [x] Create workspace skeleton and planning docs (2026-09-10)
-- [x] Organizer + format intelligence, sourced (2026-09-10) — `docs/RESEARCH.md` Part 1
-- [x] Judging rubric decode (2026-09-10) — `docs/RESEARCH.md` Part 2
-- [x] Hour-0 research playbook for Tracks A–E (2026-09-10) — `docs/RESEARCH.md` Part 3
+- [x] Workspace skeleton (2026-09-10)
+- [x] Organizer intelligence, rubric decode, hour-0 playbook (2026-09-10)
+- [x] Phases 1–8: decomposition, research, 10 scored concepts, adversarial review, selection,
+      blueprint, jury set (2026-09-10)
+- [x] Fact-check of the brief's claims — one struck as unverifiable (2026-09-10)
