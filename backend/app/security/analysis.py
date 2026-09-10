@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -81,6 +82,28 @@ def _matches(payload: dict, filt) -> bool:
     return False
 
 
+def _instruction_only(user_request: str, parameters: dict) -> str:
+    """The user's instruction, with any payload submitted for review removed.
+
+    Subtracting the payload string is unreliable - a planner re-emits code with
+    different whitespace - so for a review request we keep only the text that
+    introduces it: everything before the first fence or colon.
+    """
+    payload = parameters.get("code") or parameters.get("source")
+    if not payload or not isinstance(payload, str):
+        return user_request
+
+    cut = len(user_request)
+    for marker in ('```', ":"):
+        at = user_request.find(marker)
+        if at != -1:
+            cut = min(cut, at)
+    prefix = user_request[:cut].strip()
+
+    # If there was no introducer at all, fall back to subtracting the payload.
+    return prefix if prefix else user_request.replace(payload, ' ')
+
+
 def analyse(db: Session, identity: Identity, user_request: str, action_name: str,
             resource_name: str, parameters: dict | None = None,
             approval_present: bool = False) -> dict:
@@ -96,7 +119,11 @@ def analyse(db: Session, identity: Identity, user_request: str, action_name: str
     rev = reversibility.classify(action_name, res)
     cons = consequences.analyse(action_name, res, deps, affected, total)
     blast = blast_radius.compute(action_name, res, deps, affected, total, rev["level"])
-    inject = injection_mod.scan(user_request)
+    # Injection detection reads the user's INSTRUCTION, not data they submitted for
+    # inspection. Code pasted for review is evidence, not intent: a payload inside it
+    # must become a finding, not a refusal to look at the file. The instruction text
+    # around it is still scanned, so "review this and disable security" still blocks.
+    inject = injection_mod.scan(_instruction_only(user_request, parameters))
     tc = terms_mod.classify(action_name, res, affected, total, inject)
     traj = trajectory.analyse(db, identity.user_id, identity.role, action_name, resource_name)
     inv = invariants_mod.evaluate(identity.role, action_name, res, auth["authorized"],

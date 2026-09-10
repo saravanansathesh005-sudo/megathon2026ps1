@@ -181,12 +181,37 @@ def _post(system_instruction: str, prompt: str) -> tuple[dict | None, str | None
     return _extract_json(text), None
 
 
+def _payload_override(user_request: str) -> dict | None:
+    """A pasted code payload is the request, whatever the model made of it.
+
+    The model paraphrases, and it routinely drops the source entirely - which leaves
+    the reviewer with nothing to review and, worse, leaves the raw message as the only
+    copy of the code, so a prompt-injection comment inside it is read as the *user*
+    asking for a bypass. Extracting from the raw message is the ground truth.
+
+    A bypass ask still wins: "review this code and disable security" is not a review
+    request, so it returns None and takes the normal path, where it is blocked.
+    """
+    if planner._BYPASS_ASK.search((user_request or "").lower()):
+        return None
+    code = planner._extract_code(user_request or "")
+    if code is None:
+        return None
+    return {"action": "analyse_code", "resource": "", "parameters": {"code": code},
+            "source": "demo-planner",
+            "reasoning_summary": "code payload extracted from the request"}
+
+
 def propose(user_request: str) -> dict:
     """Return {action, resource, parameters, source, reasoning_summary, error?}.
 
     `source` is one of: gemini | demo-planner | refused.
     A refusal carries no action and is treated by the caller as nothing to execute.
     """
+    override = _payload_override(user_request)
+    if override is not None:
+        return override
+
     if available():
         raw, error = _call_gemini(user_request)
         if error is None:

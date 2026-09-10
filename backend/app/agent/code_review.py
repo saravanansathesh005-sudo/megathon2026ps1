@@ -71,7 +71,7 @@ PATTERNS: list[tuple[str, str, str, str, str]] = [
      "HIGH", "Hard-coded credential",
      "A secret in source is in every clone, every branch and every backup.",
      "Read it from the environment and keep the value out of version control."),
-    (r"(?i)execute\s*\(\s*(?:[fF][\"']|[^)]*%\s*\(|[^)]*\+\s*\w)",
+    (r"(?i)execute\s*\(\s*(?:[fF][\"']|[^)]*%\s*[\w(]|[^)]*\+\s*\w|[^)]*\.format\s*\()",
      "CRITICAL", "SQL built by string interpolation",
      "Values concatenated into SQL are parsed as SQL. This is injection.",
      "Use bound parameters: cursor.execute(sql, (value,))."),
