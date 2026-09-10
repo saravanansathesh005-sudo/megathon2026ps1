@@ -12,8 +12,8 @@ from sqlalchemy.orm import Session
 from app.models import Record, Resource
 from app.security import (
     authorization, blast_radius, consequences, dependencies, injection as injection_mod,
-    intent as intent_mod, invariants as invariants_mod, policy, reversibility, terms as terms_mod,
-    trajectory,
+    intent as intent_mod, invariants as invariants_mod, policy, reversibility,
+    steering as steering_mod, terms as terms_mod, trajectory,
 )
 from app.security.identity import Identity
 from app.security.registry import ACTIONS, OP_DELETE, OP_DROP, OP_EXPORT, is_known
@@ -128,10 +128,17 @@ def analyse(db: Session, identity: Identity, user_request: str, action_name: str
     traj = trajectory.analyse(db, identity.user_id, identity.role, action_name, resource_name)
     inv = invariants_mod.evaluate(identity.role, action_name, res, auth["authorized"],
                                   rev["level"], approval_present)
+    # Organisational rules, loaded once at start-up. They can restrict what follows
+    # and nothing else - see security/steering.py.
+    steer = steering_mod.evaluate(
+        steering_mod.current(), action=action_name, resource=resource_name,
+        role=identity.role, blast=blast["score"], category=tc["category"],
+        affected_records=affected, trajectory_score=traj["score"])
+
     verdict = policy.decide(
         authorization=auth, intent=intent, blast=blast, reversibility=rev,
         trajectory=traj, invariants=inv, resource=res, terms=tc, injection=inject,
-        file_risk=file_risk,
+        file_risk=file_risk, steering=steer,
         approval_present=approval_present, confirmation_present=approval_present,
     )
 
@@ -155,5 +162,6 @@ def analyse(db: Session, identity: Identity, user_request: str, action_name: str
         "terms": tc,
         "injection": inject,
         "file_risk": file_risk,
+        "steering": steer,
         "policy_decision": verdict,
     }

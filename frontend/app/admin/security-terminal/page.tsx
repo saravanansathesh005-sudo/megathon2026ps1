@@ -13,7 +13,7 @@ import { api, BAND_STYLE, DECISION_STYLE, loadToken, SEVERITY_STYLE, setToken } 
  * a security control, so the gate is server-side (require_observer).
  */
 
-const TABS = ["Overview", "Events", "Files", "Users", "Audit"] as const;
+const TABS = ["Overview", "Events", "Files", "Steering", "Users", "Audit"] as const;
 
 function Row({ k, v, accent }: any) {
   return (
@@ -45,6 +45,7 @@ export default function SecurityTerminal() {
   const [users, setUsers] = useState<any[]>([]);
   const [audit, setAudit] = useState<any>(null);
   const [files, setFiles] = useState<any[]>([]);
+  const [steering, setSteering] = useState<any>(null);
   const [detail, setDetail] = useState<any>(null);
   const [history, setHistory] = useState<any>(null);
   const [filter, setFilter] = useState("");
@@ -52,11 +53,12 @@ export default function SecurityTerminal() {
   const [signInError, setSignInError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const [o, e, u, a, f] = await Promise.all([
+    const [o, e, u, a, f, st] = await Promise.all([
       api.secOverview(), api.secEvents(), api.secUsers(), api.secAudit(), api.secFiles(),
+      api.secSteering(),
     ]);
     setOverview(o); setEvents(e.events); setUsers(u.users); setAudit(a);
-    setFiles(f.files);
+    setFiles(f.files); setSteering(st);
   }, []);
 
   useEffect(() => {
@@ -320,6 +322,134 @@ export default function SecurityTerminal() {
                 </tbody>
               </table>
             </div>
+            {detail && <EventDetail detail={detail} />}
+          </div>
+        )}
+
+        {tab === "Steering" && steering && (
+          <div className="space-y-3">
+            <div className={"rounded border p-3 text-xs " + (
+              steering.status === "active" ? "border-emerald-700 bg-emerald-500/10 text-emerald-300"
+              : steering.status === "invalid" ? "border-rose-700 bg-rose-500/10 text-rose-300"
+              : "border-slate-700 bg-slate-900/50 text-slate-400")}>
+              steering {String(steering.status).toUpperCase()}
+              {steering.status !== "absent" && " · " + steering.rule_count + " rules"}
+              {steering.sha256 && " · sha256 " + String(steering.sha256).slice(0, 16)}
+              <div className="mt-1 font-mono text-[10px] opacity-70">{steering.path}</div>
+              {steering.status === "absent" && (
+                <div className="mt-1">
+                  No rules file. AEGIS is running on its built-in policy.
+                </div>
+              )}
+              {steering.status === "invalid" && (
+                <div className="mt-1">
+                  Every action is being held for confirmation until this is corrected.
+                </div>
+              )}
+            </div>
+
+            {(steering.errors || []).length > 0 && (
+              <div className="rounded border border-rose-800 bg-rose-500/5 p-3">
+                <h3 className="mb-1 text-[10px] uppercase tracking-widest text-rose-400">errors</h3>
+                <ul className="space-y-0.5 text-[11px] text-rose-300">
+                  {steering.errors.map((e: string, i: number) => <li key={i}>· {e}</li>)}
+                </ul>
+              </div>
+            )}
+            {(steering.warnings || []).length > 0 && (
+              <div className="rounded border border-amber-800 bg-amber-500/5 p-3">
+                <h3 className="mb-1 text-[10px] uppercase tracking-widest text-amber-400">warnings</h3>
+                <ul className="space-y-0.5 text-[11px] text-amber-300">
+                  {steering.warnings.map((w: string, i: number) => <li key={i}>· {w}</li>)}
+                </ul>
+              </div>
+            )}
+
+            <div className="rounded border border-slate-800 bg-slate-900/40 p-3 text-[11px] text-slate-400">
+              {steering.note}
+            </div>
+
+            {steering.status === "active" && (
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="rounded border border-slate-800 p-3">
+                  <h3 className="mb-2 text-[10px] uppercase tracking-widest text-slate-500">
+                    active rules
+                  </h3>
+                  <table className="w-full text-[11px]">
+                    <tbody>
+                      {Object.entries(steering.rules || {})
+                        .filter(([, v]: any) => v !== null && v !== undefined &&
+                          !(Array.isArray(v) && v.length === 0) &&
+                          !(typeof v === "object" && !Array.isArray(v) && Object.keys(v).length === 0))
+                        .map(([k, v]: any) => (
+                          <tr key={k} className="border-t border-slate-900 align-top">
+                            <td className="w-40 py-1 pr-2 font-mono text-[10px] text-cyan-300">{k}</td>
+                            <td className="py-1 text-slate-300">
+                              {Array.isArray(v) ? v.join(", ")
+                                : typeof v === "object" ? JSON.stringify(v)
+                                : String(v)}
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="rounded border border-slate-800 p-3">
+                  <h3 className="mb-2 text-[10px] uppercase tracking-widest text-slate-500">
+                    rules fired · last 500 actions
+                  </h3>
+                  {Object.keys(steering.fired || {}).length === 0 ? (
+                    <p className="text-[11px] text-slate-600">No rule has fired yet.</p>
+                  ) : (
+                    <table className="w-full text-[11px]">
+                      <tbody>
+                        {Object.entries(steering.fired)
+                          .sort((a: any, b: any) => b[1] - a[1])
+                          .map(([rule, count]: any) => (
+                            <tr key={rule} className="border-t border-slate-900">
+                              <td className="py-1 font-mono text-[10px] text-amber-300">{rule}</td>
+                              <td className="w-12 py-1 text-right tabular-nums text-slate-300">
+                                {count}
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {(steering.recent || []).length > 0 && (
+              <div className="overflow-x-auto rounded border border-slate-800">
+                <table className="w-full text-[11px]">
+                  <thead className="bg-slate-900/60 text-[9px] uppercase tracking-wider text-slate-500">
+                    <tr>{["id", "user", "action", "resource", "decision", "rules fired"].map((h) =>
+                      <th key={h} className="whitespace-nowrap px-2 py-2 text-left">{h}</th>)}</tr>
+                  </thead>
+                  <tbody>
+                    {steering.recent.map((r: any) => (
+                      <tr key={r.action_id}
+                        onClick={() => pick(r.action_id, "Steering")}
+                        className="cursor-pointer border-t border-slate-900 hover:bg-slate-900/50">
+                        <td className="px-2 py-1 text-slate-600">{r.action_id}</td>
+                        <td className="px-2 py-1">{r.username}</td>
+                        <td className="px-2 py-1 text-slate-200">{r.action}</td>
+                        <td className="px-2 py-1 text-slate-400">{r.resource || "—"}</td>
+                        <td className={"px-2 py-1 font-semibold " + (
+                          r.decision === "BLOCK" ? "text-rose-400"
+                          : r.decision === "REQUIRE_CONFIRMATION" ? "text-amber-400"
+                          : "text-emerald-400")}>{r.decision}</td>
+                        <td className="px-2 py-1 font-mono text-[10px] text-amber-300">
+                          {(r.matched || []).join(", ")}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
             {detail && <EventDetail detail={detail} />}
           </div>
         )}

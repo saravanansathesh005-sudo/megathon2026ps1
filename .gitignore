@@ -33,3 +33,6 @@ build/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Active steering rules are per-deployment; the example is committed.
+backend/aegis.steering.yaml

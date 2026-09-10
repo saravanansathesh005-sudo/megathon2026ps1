@@ -34,6 +34,37 @@ logger = logging.getLogger(__name__)
 TRACE_HEADER = "X-Trace-Id"
 
 
+def _load_steering() -> None:
+    """Load the organisational rules file and record it in the audit chain.
+
+    The file's hash goes into the chain, so a change to what the agent is allowed
+    to do is itself a tamper-evident event - you can prove which rules were in
+    force when any decision was made.
+    """
+    from app.db import SessionLocal
+    from app.security import steering as steering_mod
+    from app.services import audit
+
+    loaded = steering_mod.load()
+    steering_mod.set_current(loaded)
+
+    if loaded.status == "absent":
+        return
+    try:
+        with SessionLocal() as db:
+            audit.record(
+                db, event_type="steering.loaded", username="system",
+                agent_id="aegis", action_name="load_steering",
+                resource_name=loaded.path,
+                decision="ALLOW" if loaded.active else "REQUIRE_CONFIRMATION",
+                detail={"status": loaded.status, "sha256": loaded.sha256,
+                        "rules": loaded.rule_count(), "errors": loaded.errors,
+                        "warnings": loaded.warnings})
+            db.commit()
+    except Exception as exc:   # never let auditing stop the service from starting
+        logger.error("steering.audit_failed", extra={"context": {"error": str(exc)}})
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialise the database on startup."""
@@ -43,6 +74,7 @@ async def lifespan(app: FastAPI):
         extra={"context": {"version": settings.VERSION, "phase": settings.PHASE}},
     )
     init_db()
+    _load_steering()
     logger.info("service.started")
     yield
     logger.info("service.stopping")

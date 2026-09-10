@@ -102,4 +102,5 @@ execution invariants, deterministic policy engine, audit log.
 | 2026-09-10 | Deep research pass; CSTM-Bench correction. Decisions 009–011. |
 | 2026-09-10 | Concept pivoted to AEGIS (consequence-centric); `SOLUTION.md` written. |
 | 2026-09-10 | **Phase 0 built:** backend foundation, 18 tests passing, README/ARCHITECTURE/API docs. |
+| 2026-09-11 | **Steering rules added:** `security/steering.py` loads `aegis.steering.yaml` at start-up and imposes a restriction floor on the policy engine. Restrict-only by construction; invalid file degrades to REQUIRE_CONFIRMATION; file hash recorded in the audit chain. Admin Steering tab. 317 tests passing. |
 | 2026-09-11 | **File upload scanning added:** `security/filescan.py` (magic-byte vs extension, script behaviour, archive/APK inspection, entropy, SHA-256) feeding the policy engine via `file_risk`. `POST /files/scan`, admin Files tab, chat upload. 283 tests passing. Samples in `demo-files/`. |

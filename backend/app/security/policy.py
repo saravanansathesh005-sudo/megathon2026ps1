@@ -54,7 +54,7 @@ def _trajectory_steps(score: int, category: str) -> int:
 def decide(*, authorization: dict, intent: dict, blast: dict, reversibility: dict,
            trajectory: dict, invariants: dict, resource: dict,
            terms: dict | None = None, injection: dict | None = None,
-           file_risk: dict | None = None,
+           file_risk: dict | None = None, steering: dict | None = None,
            approval_present: bool = False, confirmation_present: bool = False) -> dict:
     """Return the single authoritative decision plus the reasons behind it."""
     reasons: list[str] = []
@@ -66,21 +66,28 @@ def decide(*, authorization: dict, intent: dict, blast: dict, reversibility: dic
     if hard:
         for item in hard:
             reasons.append("safety invariant " + item["code"] + " failed: " + item["detail"])
-        return _verdict(BLOCK, reasons, [], category)
+        return _verdict(BLOCK, reasons, [], category, steering)
 
     if not authorization["authorized"]:
         reasons.append("authorization denied: " + authorization["reason"])
-        return _verdict(BLOCK, reasons, [], category)
+        return _verdict(BLOCK, reasons, [], category, steering)
 
     if intent["status"] == "OUT_OF_SCOPE":
         reasons.append("intent out of scope: " + intent["reason"])
-        return _verdict(BLOCK, reasons, [], category)
+        return _verdict(BLOCK, reasons, [], category, steering)
 
     # A target that does not exist cannot be reasoned about. Refuse rather than
     # evaluate a phantom resource with default (low) risk attributes.
     if resource.get("name") and not resource.get("exists", True):
         reasons.append("there is no resource named '" + str(resource["name"]) + "'")
-        return _verdict(BLOCK, reasons, [], category)
+        return _verdict(BLOCK, reasons, [], category, steering)
+
+    # Organisational steering rules. They restrict and never relax, so a BLOCK
+    # floor is applied here with the other hard blocks, and a REQUIRE_CONFIRMATION
+    # floor is applied to the graded decision further down.
+    if steering and steering.get("floor") == BLOCK:
+        reasons.extend(steering.get("reasons", []))
+        return _verdict(BLOCK, reasons, [], category, steering)
 
     # A file carrying a CRITICAL indicator is refused whatever the action's own
     # category is. The evidence comes from filescan, which reads bytes and never
@@ -89,7 +96,7 @@ def decide(*, authorization: dict, intent: dict, blast: dict, reversibility: dic
         for item in file_risk.get("findings", []):
             if item.get("severity") == "CRITICAL":
                 reasons.append("file risk: " + item.get("title", "critical indicator"))
-        return _verdict(BLOCK, reasons, [], category)
+        return _verdict(BLOCK, reasons, [], category, steering)
 
     if category == FORBIDDEN:
         for r in (terms or {}).get("reasons", []):
@@ -97,14 +104,14 @@ def decide(*, authorization: dict, intent: dict, blast: dict, reversibility: dic
         if injection and injection.get("detected"):
             for signal in injection["signals"]:
                 reasons.append("security-bypass attempt: " + signal)
-        return _verdict(BLOCK, reasons, [], category)
+        return _verdict(BLOCK, reasons, [], category, steering)
 
     score = blast["score"]
     level = reversibility["level"]
 
     if score >= ABSOLUTE_BLOCK_BLAST:
         reasons.append("blast radius " + str(score) + "/10 exceeds the maximum permitted impact")
-        return _verdict(BLOCK, reasons, [], category)
+        return _verdict(BLOCK, reasons, [], category, steering)
 
     # -------------------------------------------------------------- graded decision
     decision = ALLOW
@@ -139,6 +146,14 @@ def decide(*, authorization: dict, intent: dict, blast: dict, reversibility: dic
         decision = REQUIRE_CONFIRMATION
         reasons.append("file carries HIGH severity risk indicators")
 
+    if steering and steering.get("floor") == REQUIRE_CONFIRMATION:
+        raised = escalate(decision, 1, REQUIRE_CONFIRMATION)
+        if raised != decision:
+            decision = raised
+            reasons.extend(steering.get("reasons", []))
+        elif decision == REQUIRE_CONFIRMATION:
+            reasons.extend(steering.get("reasons", []))
+
     # ------------------------------------------------------- trajectory: restrict only
     escalated_by: list[str] = []
     steps = _trajectory_steps(trajectory["score"], category)
@@ -155,15 +170,17 @@ def decide(*, authorization: dict, intent: dict, blast: dict, reversibility: dic
         reasons.append("permitted work, within scope, low impact (blast radius "
                        + str(score) + "/10)")
     reasons.extend(escalated_by)
-    return _verdict(decision, reasons, escalated_by, category)
+    return _verdict(decision, reasons, escalated_by, category, steering)
 
 
 def _verdict(decision: str, reasons: list[str], escalated_by: list[str],
-             category: str) -> dict:
+             category: str, steering: dict | None = None) -> dict:
     return {
         "decision": decision,
         "reasons": reasons,
         "escalated_by": escalated_by,
         "terms_category": category,
         "requires_human_approval": False,
+        "steering": {"status": (steering or {}).get("status", "absent"),
+                     "matched": (steering or {}).get("matched", [])},
     }

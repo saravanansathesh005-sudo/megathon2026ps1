@@ -25,7 +25,7 @@ from app.models import (
     Action, ActionEvent, ApprovalRequest, Conversation, Message, Resource,
     SecurityRestriction, User, UserSession,
 )
-from app.security import analysis, filescan, google_auth
+from app.security import analysis, filescan, google_auth, steering as steering_mod
 from app.security.identity import (
     Identity, authenticate, create_token, current_identity, new_session_id,
     require_observer, upsert_google_user,
@@ -559,6 +559,47 @@ async def scan_upload(file: UploadFile = File(...), conversation_id: int | None 
     }
 
 
+@router.get("/admin/security/steering")
+def security_steering(db: Session = Depends(get_db),
+                      identity: Identity = Depends(require_observer)):
+    """The organisational rules in force, and how often each one has fired.
+
+    Read-only, like everything on this terminal. Rules are loaded at start-up and
+    cannot be changed here: an observer who could edit them could change outcomes,
+    which is precisely what this screen promises it cannot do.
+    """
+    steering = steering_mod.current()
+    rows = db.scalars(select(Action).order_by(Action.id.desc()).limit(500)).all()
+
+    fired: dict[str, int] = {}
+    recent = []
+    for action in rows:
+        matched = ((action.analysis or {}).get("steering") or {}).get("matched") or []
+        if not matched:
+            continue
+        for rule in matched:
+            fired[rule] = fired.get(rule, 0) + 1
+        if len(recent) < 25:
+            recent.append({
+                "action_id": action.id,
+                "at": action.created_at.isoformat() if action.created_at else None,
+                "username": action.username,
+                "action": action.action_name,
+                "resource": action.resource_name,
+                "decision": action.decision,
+                "matched": matched,
+            })
+
+    return {
+        **steering.summary(),
+        "fired": fired,
+        "recent": recent,
+        "read_only": True,
+        "note": ("Steering rules can only restrict. Nothing in the file can permit "
+                 "an action the registry forbids, or turn a BLOCK into an ALLOW."),
+    }
+
+
 @router.get("/admin/security/files")
 def security_files(limit: int = 100, db: Session = Depends(get_db),
                    identity: Identity = Depends(require_observer)):
@@ -968,5 +1009,18 @@ def verify_audit(db: Session = Depends(get_db),
 def demo_reset(db: Session = Depends(get_db)):
     stats = seed.reset(db)
     audit.record(db, event_type="demo.reset", detail=stats)
+
+    # The reset truncates the chain, which would take the start-up steering event
+    # with it. Re-record it, so the chain can always answer which rules were in
+    # force for the decisions that follow.
+    steering = steering_mod.current()
+    if steering.status != "absent":
+        audit.record(db, event_type="steering.loaded", username="system",
+                     agent_id="aegis", action_name="load_steering",
+                     resource_name=steering.path,
+                     decision="ALLOW" if steering.active else "REQUIRE_CONFIRMATION",
+                     detail={"status": steering.status, "sha256": steering.sha256,
+                             "rules": steering.rule_count(),
+                             "errors": steering.errors, "warnings": steering.warnings})
     db.commit()
     return {"reset": True, **stats}

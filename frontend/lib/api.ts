@@ -91,6 +91,7 @@ export const api = {
     call<any>("/api/admin/security/users/" + userId + "/trajectory"),
   secAudit: () => call<any>("/api/admin/security/audit"),
   secFiles: () => call<any>("/api/admin/security/files"),
+  secSteering: () => call<any>("/api/admin/security/steering"),
 
   reset: () => call<any>("/api/demo/reset", { method: "POST" }),
 };

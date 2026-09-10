@@ -1,0 +1,84 @@
+# AEGIS steering rules
+#
+# Organisational policy as data. A security team owns this file; changing what the
+# agent may do does not require touching Python or redeploying application code.
+#
+# ---------------------------------------------------------------------------
+# THESE RULES CAN ONLY RESTRICT.
+#
+# A rule can raise ALLOW to REQUIRE_CONFIRMATION, or either to BLOCK. Nothing in
+# this file can permit an action the registry forbids, satisfy an authorization
+# check, or turn a BLOCK into an ALLOW. That is deliberate: a config file that
+# could weaken security would hand the system to anyone who can write the file.
+#
+# If this file is DELETED, AEGIS runs with its built-in policy - no rules applied.
+# If this file is INVALID, every action degrades to REQUIRE_CONFIRMATION until it
+# is fixed. A typo must never silently switch your policy off.
+#
+# Loaded at start-up. The file's SHA-256 is written to the audit chain, so you can
+# prove which rules were in force when any decision was made.
+# ---------------------------------------------------------------------------
+
+version: 1
+description: Default rules for the MEGATHON demo environment.
+
+# Actions that never execute here, whoever asks and whatever the context.
+never:
+  - export_sensitive
+  - send_email
+
+# Actions that always stop for confirmation, even when the impact looks small.
+always_confirm:
+  - delete_all_projects
+  - update_config
+
+# Impact thresholds, measured against the real target set - not the action's name.
+block_when:
+  blast_radius_at_least: 9.0
+
+confirm_when:
+  blast_radius_at_least: 3.5
+
+# No single action may touch more rows than this.
+max_records_per_action: 50
+
+# Behaviour over time. Above this cross-session escalation score, stop.
+max_trajectory_score: 15
+
+# Whole Terms & Conditions bands that always need confirmation.
+confirm_categories:
+  - RISKY
+  - PRIVILEGED
+
+# Per-role restrictions, applied on top of RBAC. RBAC says what a role *can*
+# reach; this says what it may not do here.
+roles:
+  user:
+    never:
+      - drop_table
+  editor:
+    never:
+      - delete_records
+
+# Per-resource restrictions. Production data is the usual reason for these.
+resources:
+  users:
+    never:
+      - delete_records
+      - drop_table
+      - export_data
+  audit_demo:
+    never:
+      - delete_records
+      - update_record
+
+# Working hours. Outside the window, restrict rather than refuse - "confirm" keeps
+# an on-call engineer working, "block" stops everything.
+#
+# timezone accepts a UTC offset such as "+05:30" (always works) or an IANA name
+# such as "Asia/Kolkata" (needs the tz database on the host).
+allowed_hours:
+  start: "07:00"
+  end: "23:59"
+  timezone: "+05:30"
+  outside: confirm

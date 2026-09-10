@@ -19,6 +19,11 @@ os.environ.setdefault("APPROVAL_TTL_SECONDS", "180")
 # Tests are hermetic: never call the live Gemini or Google APIs, even when a
 # developer .env supplies real credentials. The Gemini boundary is exercised
 # through validate_proposal() and an injected failure instead.
+# ...and never inherit the working copy's steering rules. A test asserting on the
+# built-in policy must not change its answer because someone edited a YAML file.
+# Tests that exercise steering build their rules explicitly.
+os.environ["AEGIS_STEERING_FILE"] = str(Path(_TMP_DIR) / "no-steering.yaml")
+
 os.environ["GEMINI_API_KEY"] = ""
 os.environ["GOOGLE_CLIENT_ID"] = ""
 os.environ["GOOGLE_CLIENT_SECRET"] = ""
