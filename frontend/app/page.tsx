@@ -418,7 +418,7 @@ export default function Assistant() {
                               }}
                               rows={Math.min(14, draft.split("\n").length + 1)}
                               aria-label="Edit your message"
-                              className="wrap-any w-full resize-none bg-transparent text-[14px] leading-relaxed text-white outline-none" />
+                              className="no-scrollbar wrap-any w-full resize-none bg-transparent text-[14px] leading-relaxed text-white outline-none" />
                             <div className="mt-2 flex items-center justify-end gap-2">
                               <span className="mr-auto text-[11px] text-slate-500">
                                 Replies after this one will be replaced.
@@ -569,7 +569,7 @@ export default function Assistant() {
                 disabled={busy}
                 placeholder="Message AEGIS…"
                 aria-label="Message AEGIS"
-                className="wrap-any max-h-[340px] min-w-0 flex-1 resize-none bg-transparent py-2 text-[14.5px] leading-relaxed text-white outline-none placeholder:text-slate-500 disabled:opacity-50" />
+                className="no-scrollbar wrap-any max-h-[340px] min-w-0 flex-1 resize-none bg-transparent py-2 text-[14.5px] leading-relaxed text-white outline-none placeholder:text-slate-500 disabled:opacity-50" />
               <button onClick={() => send()} disabled={busy || !input.trim()}
                 className="mb-0.5 flex shrink-0 items-center gap-1.5 rounded-full bg-cyan-400 px-5 py-2.5 text-[13px] font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:opacity-30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400">
                 Send
