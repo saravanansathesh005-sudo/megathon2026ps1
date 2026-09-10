@@ -104,7 +104,7 @@ export default function Assistant() {
     const el = box.current;
     if (!el) return;
     el.style.height = "0px";
-    el.style.height = Math.min(el.scrollHeight, 200) + "px";
+    el.style.height = Math.min(el.scrollHeight, 340) + "px";
   }
   useEffect(autosize, [input]);
 
@@ -336,8 +336,8 @@ export default function Assistant() {
         </div>
       </aside>
 
-      <section className="flex flex-1 flex-col">
-        <div className="flex-1 overflow-y-auto px-5 py-10">
+      <section className="flex min-w-0 flex-1 flex-col">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden px-5 py-10">
           <div className="mx-auto w-full max-w-[720px]">
             {msgs.length === 0 ? (
               <div className="pt-[8vh] text-center">
@@ -365,7 +365,7 @@ export default function Assistant() {
                   <div key={m.id}>
                     {m.role === "user" ? (
                       <div className="flex justify-end">
-                        <div className="max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-md border border-white/[0.07] bg-white/[0.06] px-4 py-2.5 text-[14px] text-white">
+                        <div className="wrap-any max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-md border border-white/[0.07] bg-white/[0.06] px-4 py-2.5 text-[14px] text-white">
                           {m.content}
                         </div>
                       </div>
@@ -374,7 +374,7 @@ export default function Assistant() {
                         <div className="mb-1.5 flex items-center gap-2 text-[13px] font-semibold text-rose-300">
                           <Shield size={15} /> Action blocked
                         </div>
-                        <p className="text-[14px] leading-relaxed text-slate-300">
+                        <p className="wrap-any text-[14px] leading-relaxed text-slate-300">
                           {m.content.replace(/^Action blocked\.\s*/, "")}
                         </p>
                         <p className="mt-2.5 text-[11.5px] text-slate-500">
@@ -386,7 +386,7 @@ export default function Assistant() {
                         <div className="mb-1.5 text-[13px] font-semibold text-amber-300">
                           Confirmation required
                         </div>
-                        <p className="text-[14px] leading-relaxed text-slate-200">{m.content}</p>
+                        <p className="wrap-any text-[14px] leading-relaxed text-slate-200">{m.content}</p>
                         {m.proposal && (
                           <p className="mt-2 text-[12px] text-slate-500">
                             {m.proposal.action}
@@ -420,24 +420,24 @@ export default function Assistant() {
                             </span>
                           ))}
                         </div>
-                        <p className="mb-3 text-[13.5px] leading-relaxed text-slate-300">
+                        <p className="wrap-any mb-3 text-[13.5px] leading-relaxed text-slate-300">
                           {m.review.summary}
                         </p>
                         <div className="space-y-2.5">
                           {m.review.findings.map((f: any, i: number) => (
                             <div key={i} className="rounded-xl border border-white/[0.06] bg-black/20 p-3">
-                              <div className="mb-1 flex items-center gap-2">
+                              <div className="mb-1 flex flex-wrap items-center gap-2">
                                 <span className={"rounded px-1.5 py-0.5 text-[10px] font-bold " + SEV[f.severity]}>
                                   {f.severity}
                                 </span>
-                                <span className="text-[13px] font-medium text-white">{f.title}</span>
+                                <span className="wrap-any min-w-0 text-[13px] font-medium text-white">{f.title}</span>
                                 {f.line != null && (
                                   <span className="text-[11px] text-slate-500">line {f.line}</span>
                                 )}
                               </div>
-                              <p className="text-[12.5px] leading-relaxed text-slate-400">{f.detail}</p>
+                              <p className="wrap-any text-[12.5px] leading-relaxed text-slate-400">{f.detail}</p>
                               {f.fix && (
-                                <p className="mt-1.5 text-[12.5px] leading-relaxed text-cyan-300/80">
+                                <p className="wrap-any mt-1.5 text-[12.5px] leading-relaxed text-cyan-300/80">
                                   Fix: {f.fix}
                                 </p>
                               )}
@@ -449,11 +449,11 @@ export default function Assistant() {
                         </div>
                       </div>
                     ) : m.kind === "result" ? (
-                      <p className="flex items-center gap-2 text-[14px] text-cyan-300/90">
+                      <p className="wrap-any flex items-center gap-2 text-[14px] text-cyan-300/90">
                         <span className="text-[15px] leading-none">✓</span> {m.content}
                       </p>
                     ) : (
-                      <p className="whitespace-pre-wrap text-[14.5px] leading-relaxed text-slate-200">
+                      <p className="wrap-any whitespace-pre-wrap text-[14.5px] leading-relaxed text-slate-200">
                         {m.content}
                       </p>
                     )}
@@ -490,7 +490,7 @@ export default function Assistant() {
                 disabled={busy}
                 placeholder="Message AEGIS…"
                 aria-label="Message AEGIS"
-                className="max-h-[200px] flex-1 resize-none bg-transparent py-2 text-[14.5px] leading-relaxed text-white outline-none placeholder:text-slate-500 disabled:opacity-50" />
+                className="wrap-any max-h-[340px] min-w-0 flex-1 resize-none bg-transparent py-2 text-[14.5px] leading-relaxed text-white outline-none placeholder:text-slate-500 disabled:opacity-50" />
               <button onClick={send} disabled={busy || !input.trim()}
                 className="mb-0.5 flex shrink-0 items-center gap-1.5 rounded-full bg-cyan-400 px-5 py-2.5 text-[13px] font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:opacity-30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400">
                 Send

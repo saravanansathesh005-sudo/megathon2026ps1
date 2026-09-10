@@ -13,3 +13,11 @@ body {
 .font-mono, .font-mono * {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
+
+/* Long unbroken strings - base64 blobs, tokens, URLs, minified code - must wrap
+   inside their own bubble. Without this they set the column's min-content width,
+   which widens the whole chat and scrolls it sideways. */
+.wrap-any {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
