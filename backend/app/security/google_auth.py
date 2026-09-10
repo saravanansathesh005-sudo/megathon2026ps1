@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import secrets
+import logging
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -20,6 +21,7 @@ from jwt import PyJWKClient
 
 from app.config import get_settings
 
+logger = logging.getLogger(__name__)
 settings = get_settings()
 
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -78,6 +80,20 @@ def _exchange_code(code: str) -> dict:
         raise GoogleAuthError("Google unreachable: " + str(exc.reason)) from exc
 
 
+# Tolerance for clock skew between this host and Google, in seconds.
+#
+# PyJWT rejects a token whose `iat` is even one second in the future, and Google
+# stamps `iat` at the moment of issue. A host running a few seconds behind - which
+# is ordinary on a laptop that has not synced NTP recently - therefore fails every
+# sign-in with ImmatureSignatureError. The leeway is applied to iat, nbf and exp,
+# so it covers drift in both directions.
+#
+# This does not weaken verification: the signature, issuer and audience are still
+# checked exactly, and a token more than CLOCK_SKEW_LEEWAY seconds past expiry is
+# still refused. RFC 7519 explicitly allows a small leeway for this reason.
+CLOCK_SKEW_LEEWAY = 120
+
+
 def verify_id_token(id_token: str) -> dict:
     """Verify signature, issuer, audience and expiry against Google's JWKS."""
     global _jwk_client
@@ -88,7 +104,16 @@ def verify_id_token(id_token: str) -> dict:
         claims = jwt.decode(
             id_token, signing_key.key, algorithms=["RS256"],
             audience=settings.GOOGLE_CLIENT_ID, issuer=list(ISSUERS),
+            leeway=CLOCK_SKEW_LEEWAY,
         )
+    except (jwt.ImmatureSignatureError, jwt.ExpiredSignatureError) as exc:
+        # Naming the exception class here is unhelpful to whoever is signing in.
+        # Past the leeway, a time-based failure is a clock problem, not a bad token.
+        logger.error("google.clock_skew", extra={"context": {"error": type(exc).__name__}})
+        raise GoogleAuthError(
+            "sign-in failed because this server's clock is out of step with Google "
+            "by more than " + str(CLOCK_SKEW_LEEWAY) + " seconds. Synchronise the "
+            "system time and try again.") from exc
     except Exception as exc:  # noqa: BLE001 - any verification failure is a refusal
         raise GoogleAuthError("id_token verification failed: " + type(exc).__name__) from exc
 
