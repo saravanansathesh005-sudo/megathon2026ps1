@@ -11,6 +11,12 @@ const DEMO_ACCOUNTS = [
   { u: "user2", p: "user2123", label: "Ravi Second" },
 ];
 
+const SUGGESTIONS = [
+  "Create a project called Megathon",
+  "Show me my projects",
+  "Delete the project Portfolio",
+];
+
 type Msg = {
   id: number | string;
   role: "user" | "assistant";
@@ -23,6 +29,42 @@ type Msg = {
   done?: boolean;
 };
 
+function Shield({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M12 3l7 3v5.5c0 4.2-2.9 7.9-7 9-4.1-1.1-7-4.8-7-9V6l7-3z"
+        stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+      <path d="M12 8.5v4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <circle cx="12" cy="15.2" r="0.9" fill="currentColor" />
+    </svg>
+  );
+}
+
+function GoogleMark() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#4285F4" d="M45 24c0-1.6-.1-2.7-.4-3.9H24v7.1h12c-.2 1.9-1.5 4.7-4.4 6.6l6.7 5.2C42.2 35.5 45 30.3 45 24z" />
+      <path fill="#34A853" d="M24 46c5.9 0 10.9-2 14.5-5.3l-6.9-5.4c-1.9 1.3-4.4 2.2-7.6 2.2-5.8 0-10.7-3.8-12.5-9.1l-7.1 5.5C8.1 41 15.4 46 24 46z" />
+      <path fill="#FBBC05" d="M11.5 28.4c-.5-1.4-.8-2.9-.8-4.4s.3-3 .7-4.4l-7.1-5.5C2.8 17 2 20.4 2 24s.8 7 2.3 9.9l7.2-5.5z" />
+      <path fill="#EA4335" d="M24 10.7c4.1 0 6.9 1.8 8.5 3.3l6.2-6C34.9 4.5 29.9 2 24 2 15.4 2 8.1 7 4.3 14.1l7.2 5.5c1.8-5.3 6.7-8.9 12.5-8.9z" />
+    </svg>
+  );
+}
+
+/** Ambient teal wash behind both screens. */
+function Glow() {
+  return (
+    <div aria-hidden="true" className="pointer-events-none fixed inset-0 -z-10"
+      style={{
+        background:
+          "radial-gradient(70% 55% at 50% 0%, rgba(20,150,150,.16), transparent 70%)," +
+          "radial-gradient(45% 40% at 0% 100%, rgba(16,140,140,.14), transparent 70%)," +
+          "radial-gradient(45% 40% at 100% 100%, rgba(16,140,140,.12), transparent 70%)," +
+          "#080B10",
+      }} />
+  );
+}
+
 export default function Assistant() {
   const [me, setMe] = useState<any>(null);
   const [cfg, setCfg] = useState<any>({ google: false, password: true });
@@ -33,6 +75,7 @@ export default function Assistant() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
+  const box = useRef<HTMLTextAreaElement>(null);
 
   const refreshConvos = useCallback(async () => {
     try { setConvos((await api.conversations()).conversations); } catch { /* signed out */ }
@@ -45,6 +88,15 @@ export default function Assistant() {
   }, [refreshConvos]);
 
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs]);
+
+  /** Grow the composer with its content, up to a ceiling, then scroll inside. */
+  function autosize() {
+    const el = box.current;
+    if (!el) return;
+    el.style.height = "0px";
+    el.style.height = Math.min(el.scrollHeight, 200) + "px";
+  }
+  useEffect(autosize, [input]);
 
   async function signInWithGoogle() {
     setError(null);
@@ -82,7 +134,7 @@ export default function Assistant() {
       const r = await api.chat(text, convoId);
       setConvoId(r.conversation_id);
       setMsgs((m) => [...m, {
-        id: "a-" + r.action_id, role: "assistant", content: r.message,
+        id: "a-" + (r.action_id ?? Date.now()), role: "assistant", content: r.message,
         kind: r.kind, action_id: r.action_id, confirmation: r.confirmation,
         decision: r.decision, proposal: r.proposal,
       }]);
@@ -100,13 +152,13 @@ export default function Assistant() {
       const out = await api.execute(actionId);
       const line = out.commit_status === "rolled_back"
         ? "Verification failed, so I rolled it back. Nothing was changed."
-        : out.execution_status === "executed" ? "✓ Done." : "That didn't complete.";
+        : out.execution_status === "executed" ? "Done." : "That didn't complete.";
       setMsgs((m) => [...m, { id: "r-" + actionId, role: "assistant", content: line, kind: "result" }]);
     } catch (e: any) {
       const d = e?.body?.detail;
       setMsgs((m) => [...m, {
         id: "e-" + actionId, role: "assistant", kind: "blocked",
-        content: "Action blocked. " + (d?.reason || d?.error || "The security policy prevented this."),
+        content: d?.reason || d?.error || "The security policy prevented this.",
       }]);
     }
   }
@@ -132,152 +184,265 @@ export default function Assistant() {
       .concat({ id: "c-" + msg.id, role: "assistant", content: "Cancelled — nothing was changed." }));
   }
 
-  // ------------------------------------------------------------------ sign in
+  const font = "font-['Outfit',ui-sans-serif,system-ui,sans-serif]";
+
+  // ================================================================== sign in
   if (!me) {
     return (
-      <main className="flex min-h-screen items-center justify-center px-4">
-        <div className="w-full max-w-sm">
-          <div className="mb-8 text-center">
-            <div className="text-3xl font-semibold tracking-tight text-slate-100">AEGIS</div>
-            <p className="mt-2 text-sm text-slate-500">Your AI assistant</p>
+      <main className={"relative flex min-h-screen items-center justify-center px-5 py-12 " + font}>
+        <Glow />
+        <div className="w-full max-w-[440px] text-center">
+          <div className="mx-auto mb-6 grid h-[52px] w-[52px] place-items-center rounded-2xl border border-cyan-400/20 bg-cyan-400/10 text-cyan-300">
+            <Shield size={24} />
           </div>
-          <button onClick={signInWithGoogle}
-            className="mb-3 flex w-full items-center justify-center gap-3 rounded-lg border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-medium text-slate-100 transition hover:border-slate-500">
-            <svg width="17" height="17" viewBox="0 0 48 48" aria-hidden="true">
-              <path fill="#4285F4" d="M45 24c0-1.6-.1-2.7-.4-3.9H24v7.1h12c-.2 1.9-1.5 4.7-4.4 6.6l6.7 5.2C42.2 35.5 45 30.3 45 24z" />
-              <path fill="#34A853" d="M24 46c5.9 0 10.9-2 14.5-5.3l-6.9-5.4c-1.9 1.3-4.4 2.2-7.6 2.2-5.8 0-10.7-3.8-12.5-9.1l-7.1 5.5C8.1 41 15.4 46 24 46z" />
-              <path fill="#FBBC05" d="M11.5 28.4c-.5-1.4-.8-2.9-.8-4.4s.3-3 .7-4.4l-7.1-5.5C2.8 17 2 20.4 2 24s.8 7 2.3 9.9l7.2-5.5z" />
-              <path fill="#EA4335" d="M24 10.7c4.1 0 6.9 1.8 8.5 3.3l6.2-6C34.9 4.5 29.9 2 24 2 15.4 2 8.1 7 4.3 14.1l7.2 5.5c1.8-5.3 6.7-8.9 12.5-8.9z" />
-            </svg>
-            Continue with Google
-          </button>
-          {!cfg.google && (
-            <p className="mb-5 text-center text-xs text-slate-600">
-              Google sign-in needs server credentials. Use a demo account below.
+
+          <div className="text-[15px] font-semibold tracking-[0.42em] text-slate-200">
+            AEGIS
+          </div>
+
+          <h1 className="mx-auto mt-6 max-w-[380px] text-[32px] font-bold leading-[1.18] tracking-tight text-white">
+            Your intelligent workspace, powered by AI
+          </h1>
+          <p className="mt-3 text-[14px] text-slate-400">
+            Work smarter. Automate faster. Stay in control.
+          </p>
+
+          <div className="mt-9 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-5">
+            <button onClick={signInWithGoogle}
+              className="flex w-full items-center justify-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.04] px-4 py-3.5 text-[14px] font-semibold text-white transition hover:border-cyan-400/30 hover:bg-white/[0.07] focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400">
+              <GoogleMark />
+              Continue with Google
+            </button>
+            {!cfg.google && (
+              <p className="mt-3 text-[11.5px] leading-relaxed text-slate-500">
+                Google sign-in needs server credentials. Use a demo account below.
+              </p>
+            )}
+
+            {cfg.password && (
+              <>
+                <div className="my-5 flex items-center gap-3">
+                  <span className="h-px flex-1 bg-white/[0.07]" />
+                  <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-500">
+                    Demo accounts
+                  </span>
+                  <span className="h-px flex-1 bg-white/[0.07]" />
+                </div>
+
+                {DEMO_ACCOUNTS.map((d) => (
+                  <button key={d.u} onClick={() => signInWithPassword(d.u, d.p)}
+                    className="group mb-2.5 flex w-full items-center justify-between rounded-xl border border-white/[0.07] bg-white/[0.02] px-4 py-3.5 text-left transition hover:border-cyan-400/30 hover:bg-white/[0.05] focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400">
+                    <span className="text-[13.5px] text-white">
+                      {d.label}<span className="text-slate-500"> · {d.u}</span>
+                    </span>
+                    <span className="text-slate-600 transition group-hover:translate-x-0.5 group-hover:text-cyan-300">→</span>
+                  </button>
+                ))}
+              </>
+            )}
+          </div>
+
+          {error && (
+            <p className="mt-4 rounded-xl border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-[12.5px] text-rose-300">
+              {error}
             </p>
           )}
-          {cfg.password && (
-            <div className="border-t border-slate-800 pt-5">
-              <p className="mb-3 text-center text-[11px] uppercase tracking-widest text-slate-600">
-                Demo accounts
-              </p>
-              {DEMO_ACCOUNTS.map((d) => (
-                <button key={d.u} onClick={() => signInWithPassword(d.u, d.p)}
-                  className="mb-2 w-full rounded-lg border border-slate-800 px-4 py-2.5 text-left text-sm text-slate-300 hover:border-slate-600">
-                  {d.label} <span className="text-slate-600">· {d.u}</span>
-                </button>
-              ))}
-            </div>
-          )}
-          {error && <div className="mt-4 rounded-lg bg-rose-500/10 p-3 text-xs text-rose-300">{error}</div>}
         </div>
       </main>
     );
   }
 
-  // --------------------------------------------------------------- assistant
+  const initials = (me.display_name || me.username || "?")
+    .split(" ").map((s: string) => s[0]).slice(0, 2).join("").toUpperCase();
+
+  // ================================================================ assistant
   return (
-    <main className="flex h-screen">
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-slate-800 bg-slate-950 p-3 md:flex">
-        <div className="px-2 py-3 text-lg font-semibold tracking-tight text-slate-100">AEGIS</div>
+    <main className={"relative flex h-screen overflow-hidden " + font}>
+      <Glow />
+
+      <aside className="hidden w-[272px] shrink-0 flex-col border-r border-white/[0.06] bg-black/25 px-4 py-5 md:flex">
+        <div className="mb-6 flex items-center gap-2.5 px-1">
+          <span className="grid h-8 w-8 place-items-center rounded-lg border border-cyan-400/20 bg-cyan-400/10 text-cyan-300">
+            <Shield size={16} />
+          </span>
+          <span className="text-[14px] font-semibold tracking-[0.34em] text-white">AEGIS</span>
+        </div>
+
         <button onClick={newChat}
-          className="mb-4 rounded-lg border border-slate-700 px-3 py-2 text-left text-sm text-slate-200 hover:border-slate-500">
-          + New chat
+          className="flex items-center gap-2 rounded-xl border border-white/[0.09] bg-white/[0.03] px-4 py-3 text-[13.5px] font-medium text-white transition hover:border-cyan-400/30 hover:bg-white/[0.06] focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400">
+          <span className="text-[15px] leading-none text-cyan-300">+</span> New chat
         </button>
-        <div className="flex-1 overflow-y-auto">
+
+        <div className="mb-2 mt-7 px-1 text-[10px] font-medium uppercase tracking-[0.18em] text-slate-500">
+          Recent
+        </div>
+        <div className="-mx-1 flex-1 overflow-y-auto px-1">
           {convos.map((c) => (
             <button key={c.id} onClick={() => openConversation(c.id)}
-              className={"mb-1 block w-full truncate rounded-lg px-3 py-2 text-left text-[13px] " +
-                (convoId === c.id ? "bg-slate-800 text-slate-100" : "text-slate-400 hover:bg-slate-900")}>
+              className={"mb-0.5 block w-full truncate rounded-lg px-3 py-2 text-left text-[13px] transition " +
+                (convoId === c.id
+                  ? "bg-white/[0.07] text-white"
+                  : "text-slate-400 hover:bg-white/[0.04] hover:text-slate-200")}>
               {c.title}
             </button>
           ))}
-          {convos.length === 0 && <p className="px-3 text-xs text-slate-600">No conversations yet.</p>}
+          {convos.length === 0 && (
+            <p className="px-3 py-2 text-[12.5px] text-slate-600">No conversations yet.</p>
+          )}
         </div>
-        <div className="border-t border-slate-800 pt-3">
-          <div className="px-2 text-sm text-slate-300">{me.display_name || me.username}</div>
-          <div className="px-2 text-xs text-slate-600">{me.email || me.username}</div>
-          <button onClick={async () => { try { await api.logout(); } catch {} setToken(null); setMe(null); setMsgs([]); setConvos([]); }}
-            className="mt-2 w-full rounded-lg px-2 py-1.5 text-left text-xs text-slate-500 hover:text-slate-300">
+
+        <div className="mt-4 rounded-xl border border-white/[0.07] bg-white/[0.02] p-3">
+          <div className="flex items-center gap-3">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-cyan-400/15 text-[12px] font-semibold text-cyan-200">
+              {initials}
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-[13px] font-medium text-white">
+                {me.display_name || me.username}
+              </span>
+              <span className="block truncate text-[11.5px] text-slate-500">
+                {me.email || me.username}
+              </span>
+            </span>
+          </div>
+          <button
+            onClick={async () => {
+              try { await api.logout(); } catch {}
+              setToken(null); setMe(null); setMsgs([]); setConvos([]);
+            }}
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-white/[0.08] px-3 py-2 text-[12px] text-slate-400 transition hover:border-white/20 hover:text-slate-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M15 12H4m0 0l3.5-3.5M4 12l3.5 3.5M11 4h6a2 2 0 012 2v12a2 2 0 01-2 2h-6"
+                stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
             Log out
           </button>
         </div>
       </aside>
 
       <section className="flex flex-1 flex-col">
-        <div className="flex-1 overflow-y-auto px-4 py-8">
-          <div className="mx-auto max-w-2xl space-y-5">
-            {msgs.length === 0 && (
-              <div className="pt-16 text-center">
-                <h1 className="text-2xl font-semibold text-slate-200">How can I help?</h1>
-                <div className="mx-auto mt-6 grid max-w-md gap-2">
-                  {["Create a project called Megathon", "Show me my projects",
-                    "Delete the project Portfolio"].map((s) => (
-                    <button key={s} onClick={() => setInput(s)}
-                      className="rounded-lg border border-slate-800 px-4 py-2.5 text-left text-sm text-slate-400 hover:border-slate-600 hover:text-slate-200">
+        <div className="flex-1 overflow-y-auto px-5 py-10">
+          <div className="mx-auto w-full max-w-[720px]">
+            {msgs.length === 0 ? (
+              <div className="pt-[8vh] text-center">
+                <p className="text-[10.5px] font-medium uppercase tracking-[0.24em] text-cyan-300/70">
+                  Your AI workspace
+                </p>
+                <h1 className="mt-4 text-[40px] font-bold leading-tight tracking-tight text-white">
+                  How can I help?
+                </h1>
+                <p className="mt-3 text-[14px] text-slate-400">
+                  Ask, plan, analyze, or get things done with AEGIS.
+                </p>
+                <div className="mx-auto mt-9 grid gap-3">
+                  {SUGGESTIONS.map((s) => (
+                    <button key={s} onClick={() => { setInput(s); box.current?.focus(); }}
+                      className="rounded-xl border border-white/[0.07] bg-white/[0.02] px-5 py-4 text-left text-[14px] text-slate-300 transition hover:border-cyan-400/25 hover:bg-white/[0.05] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400">
                       {s}
                     </button>
                   ))}
                 </div>
               </div>
-            )}
-
-            {msgs.map((m) => (
-              <div key={m.id}>
-                {m.role === "user" ? (
-                  <div className="flex justify-end">
-                    <div className="max-w-[80%] rounded-2xl bg-slate-800 px-4 py-2.5 text-sm text-slate-100">
-                      {m.content}
-                    </div>
-                  </div>
-                ) : m.kind === "blocked" ? (
-                  <div className="rounded-xl border border-rose-900/60 bg-rose-500/5 p-4">
-                    <div className="mb-1 text-sm font-semibold text-rose-300">Action blocked</div>
-                    <p className="text-sm text-slate-300">{m.content.replace(/^Action blocked\.\s*/, "")}</p>
-                    <p className="mt-2 text-xs text-slate-600">AEGIS made this decision automatically.</p>
-                  </div>
-                ) : m.kind === "confirm" && !m.done ? (
-                  <div className="rounded-xl border border-amber-900/60 bg-amber-500/5 p-4">
-                    <div className="mb-1 text-sm font-semibold text-amber-300">Confirmation required</div>
-                    <p className="text-sm text-slate-300">{m.content}</p>
-                    {m.proposal && (
-                      <p className="mt-2 text-xs text-slate-500">
-                        Action: <span className="text-slate-300">{m.proposal.action}</span>
-                        {m.proposal.parameters?.name ? " · " + m.proposal.parameters.name : ""}
+            ) : (
+              <div className="space-y-5">
+                {msgs.map((m) => (
+                  <div key={m.id}>
+                    {m.role === "user" ? (
+                      <div className="flex justify-end">
+                        <div className="max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-md border border-white/[0.07] bg-white/[0.06] px-4 py-2.5 text-[14px] text-white">
+                          {m.content}
+                        </div>
+                      </div>
+                    ) : m.kind === "blocked" ? (
+                      <div className="rounded-2xl border border-rose-500/20 bg-rose-500/[0.07] p-4">
+                        <div className="mb-1.5 flex items-center gap-2 text-[13px] font-semibold text-rose-300">
+                          <Shield size={15} /> Action blocked
+                        </div>
+                        <p className="text-[14px] leading-relaxed text-slate-300">
+                          {m.content.replace(/^Action blocked\.\s*/, "")}
+                        </p>
+                        <p className="mt-2.5 text-[11.5px] text-slate-500">
+                          AEGIS made this decision automatically.
+                        </p>
+                      </div>
+                    ) : m.kind === "confirm" && !m.done ? (
+                      <div className="rounded-2xl border border-amber-400/25 bg-amber-400/[0.06] p-4">
+                        <div className="mb-1.5 text-[13px] font-semibold text-amber-300">
+                          Confirmation required
+                        </div>
+                        <p className="text-[14px] leading-relaxed text-slate-200">{m.content}</p>
+                        {m.proposal && (
+                          <p className="mt-2 text-[12px] text-slate-500">
+                            {m.proposal.action}
+                            {m.proposal.parameters?.name ? " · " + m.proposal.parameters.name : ""}
+                          </p>
+                        )}
+                        <div className="mt-3.5 flex gap-2">
+                          <button onClick={() => confirmAction(m)} disabled={busy}
+                            className="rounded-lg bg-amber-400/20 px-4 py-2 text-[12.5px] font-semibold text-amber-200 transition hover:bg-amber-400/30 disabled:opacity-40">
+                            Confirm
+                          </button>
+                          <button onClick={() => cancelAction(m)}
+                            className="rounded-lg border border-white/[0.09] px-4 py-2 text-[12.5px] text-slate-400 transition hover:text-slate-200">
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : m.kind === "result" ? (
+                      <p className="flex items-center gap-2 text-[14px] text-cyan-300/90">
+                        <span className="text-[15px] leading-none">✓</span> {m.content}
+                      </p>
+                    ) : (
+                      <p className="whitespace-pre-wrap text-[14.5px] leading-relaxed text-slate-200">
+                        {m.content}
                       </p>
                     )}
-                    <div className="mt-3 flex gap-2">
-                      <button onClick={() => confirmAction(m)} disabled={busy}
-                        className="rounded-lg bg-amber-500/20 px-4 py-1.5 text-xs font-semibold text-amber-200 hover:bg-amber-500/30 disabled:opacity-40">
-                        Confirm
-                      </button>
-                      <button onClick={() => cancelAction(m)}
-                        className="rounded-lg border border-slate-700 px-4 py-1.5 text-xs text-slate-400 hover:text-slate-200">
-                        Cancel
-                      </button>
-                    </div>
                   </div>
-                ) : (
-                  <p className="text-sm leading-relaxed text-slate-200">{m.content}</p>
+                ))}
+                {busy && (
+                  <p className="flex items-center gap-2 text-[13.5px] text-slate-500">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-400" />
+                    Thinking…
+                  </p>
                 )}
+                {error && <p className="text-[13.5px] text-rose-400">{error}</p>}
+                <div ref={bottom} />
               </div>
-            ))}
-            {busy && <p className="text-sm text-slate-600">Thinking…</p>}
-            {error && <p className="text-sm text-rose-400">{error}</p>}
-            <div ref={bottom} />
+            )}
           </div>
         </div>
 
-        <div className="border-t border-slate-800 px-4 py-4">
-          <div className="mx-auto flex max-w-2xl gap-2">
-            <input value={input} onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && send()}
-              disabled={busy} placeholder="Message AEGIS…"
-              className="flex-1 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-slate-500 disabled:opacity-50" />
-            <button onClick={send} disabled={busy || !input.trim()}
-              className="rounded-xl bg-slate-100 px-5 text-sm font-semibold text-slate-900 disabled:opacity-30">
-              Send
-            </button>
+        <div className="px-5 pb-7">
+          <div className="mx-auto w-full max-w-[720px]">
+            <div className="flex items-end gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.03] py-2.5 pl-5 pr-2.5 transition focus-within:border-cyan-400/30">
+              <textarea
+                ref={box}
+                rows={1}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  // Enter sends. Shift+Enter (or Ctrl/Cmd+Enter) starts a new line.
+                  if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+                    e.preventDefault();
+                    send();
+                  }
+                }}
+                disabled={busy}
+                placeholder="Message AEGIS…"
+                aria-label="Message AEGIS"
+                className="max-h-[200px] flex-1 resize-none bg-transparent py-2 text-[14.5px] leading-relaxed text-white outline-none placeholder:text-slate-500 disabled:opacity-50" />
+              <button onClick={send} disabled={busy || !input.trim()}
+                className="mb-0.5 flex shrink-0 items-center gap-1.5 rounded-full bg-cyan-400 px-5 py-2.5 text-[13px] font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:opacity-30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400">
+                Send
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M12 19V5m0 0l-6 6m6-6l6 6" stroke="currentColor"
+                    strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            </div>
+            <p className="mt-2 text-center text-[11px] text-slate-600">
+              Enter to send · Shift + Enter for a new line
+            </p>
           </div>
         </div>
       </section>
