@@ -75,6 +75,12 @@ def decide(*, authorization: dict, intent: dict, blast: dict, reversibility: dic
         reasons.append("intent out of scope: " + intent["reason"])
         return _verdict(BLOCK, reasons, [], category)
 
+    # A target that does not exist cannot be reasoned about. Refuse rather than
+    # evaluate a phantom resource with default (low) risk attributes.
+    if resource.get("name") and not resource.get("exists", True):
+        reasons.append("there is no resource named '" + str(resource["name"]) + "'")
+        return _verdict(BLOCK, reasons, [], category)
+
     if category == FORBIDDEN:
         for r in (terms or {}).get("reasons", []):
             reasons.append("terms & conditions: " + r)

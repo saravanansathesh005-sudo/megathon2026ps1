@@ -8,8 +8,12 @@ from __future__ import annotations
 
 import re
 
-from app.security.intent import RESOURCE_ALIASES, infer_op_class
+from app.security import injection
+from app.security.intent import RESOURCE_ALIASES, VERBS, infer_op_class
 from app.security.registry import OP_DELETE, OP_DROP, OP_EXPORT, OP_READ, OP_WRITE
+
+# Word-boundary token, built explicitly to survive any editing pipeline.
+WORD = chr(92) + "b"
 
 AGENT_ID = "aegis-planner"
 
@@ -56,15 +60,39 @@ def _workspace_target(text: str) -> str | None:
     return best
 
 
+def _distinct_ops(text: str) -> int:
+    """How many different operation classes does this message ask for?"""
+    lowered = (text or "").lower()
+    found = set()
+    for op, verbs in VERBS.items():
+        for verb in verbs:
+            if re.search(WORD + re.escape(verb) + WORD, lowered):
+                found.add(op)
+                break
+    return len(found)
+
+
+_RESOURCE_WORDS = re.compile(
+    WORD + r"(table|tables|record|records|row|rows|database|audit|logs?|email|emails)" + WORD)
+
+
 def _names_a_resource(text: str) -> bool:
+    """Does the message mention something the agent could act on?"""
     lowered = (text or "").lower()
+    if _RESOURCE_WORDS.search(lowered):
+        return True
     return any(alias in lowered
-               for aliases in RESOURCE_ALIASES.values() for alias in aliases)         or bool(re.search(r"(table|tables|record|records|database|audit|log|logs)", lowered))
+               for aliases in RESOURCE_ALIASES.values() for alias in aliases)
 
 
-def _resource_from(text: str, default: str = "users") -> str:
+def _resource_from(text: str) -> str | None:
+    """Name the resource the text refers to, or None. Never guess.
+
+    Defaulting an unrecognised target to a real table is how "clear my stuff"
+    becomes "delete every row in production users".
+    """
     lowered = (text or "").lower()
-    best, best_pos = default, len(lowered) + 1
+    best, best_pos = None, len(lowered) + 1
     for resource, aliases in RESOURCE_ALIASES.items():
         for alias in aliases:
             pos = lowered.find(alias)
@@ -72,6 +100,32 @@ def _resource_from(text: str, default: str = "users") -> str:
                 best, best_pos = resource, pos
     return best
 
+
+# A request to work around the security layer is classified, never answered with a
+# clarification prompt: it must be blocked, audited, and counted against trajectory.
+_BYPASS_ASK = re.compile(
+    r"\b(disable|turn\s*off|switch\s*off|bypass|ignore|override|circumvent|get\s+around)\b"
+    r"[\w\s,'-]{0,30}?\b(aegis|security|rules?|polic\w+|safety|guardrails?|restrictions?)\b")
+
+# Exfiltration of sensitive material, with or without a named table.
+_SENSITIVE_EXFIL = re.compile(
+    r"\b(sensitive|credential|password|secret|api\s*keys?|token)s?\b"
+    r"[\w\s,'-]{0,30}?\b|"
+    r"\b(export|download|dump|exfiltrate|send|share|extract)\b[\w\s,'-]{0,30}?"
+    r"\b(sensitive|credential|password|secret|api\s*keys?|tokens?)\b")
+
+# Only a genuine conjunction makes a message compound. Without this, an item whose
+# NAME contains a verb ("Remove the task Write tests") looks like two requests.
+_CONJUNCTION = re.compile(r"\s+(and|then|also|after that|;)\s+|,\s*then\s+")
+
+MULTI_INTENT_REPLY = (
+    "That asks for more than one thing at once. Tell me one at a time so I can "
+    "check each properly — I will not pick one for you.")
+
+AMBIGUOUS_TARGET_REPLY = (
+    "I need to know what to act on before I do anything. Name the project, task or "
+    "file — for example “Delete the project Portfolio”. I will not guess "
+    "a target for a destructive action.")
 
 CONVERSATIONAL_REPLY = (
     "I can help you manage your projects, tasks and files. Try "
@@ -94,14 +148,28 @@ def plan(user_request: str) -> dict:
     # ------------------------------------------ security-relevant asks come first
     # These must be classified before the conversational guard, or a bypass
     # request with no action verb would be answered with small talk.
-    if re.search(r"\b(disable|turn off)\s+(aegis|security)", lowered):
+    if _BYPASS_ASK.search(lowered):
         return {"action": "disable_security", "resource": "", "parameters": {}}
+    if _SENSITIVE_EXFIL.search(lowered):
+        return {"action": "export_sensitive", "resource": "", "parameters": {}}
     if re.search(r"\b(another|other)\s+user('s)?\s+(data|files?|projects?|account)", lowered):
         return {"action": "access_other_user_data", "resource": "users", "parameters": {}}
     if re.search(r"\b(make|grant|give)\s+(me|myself)\s+(an?\s+)?(admin|root)", lowered):
         return {"action": "escalate_privilege", "resource": "", "parameters": {}}
     if re.search(r"\b(delete|clear|wipe)\s+(the\s+)?(audit|logs?)\b", lowered):
         return {"action": "modify_audit_log", "resource": "audit_demo", "parameters": {}}
+
+    # Catch-all: anything the injection detector flags is a request to work around
+    # the security layer. It must be classified and blocked, never answered with a
+    # clarification, or the attempt never reaches the audit log or trajectory.
+    if injection.scan(text)["detected"]:
+        return {"action": "disable_security", "resource": "", "parameters": {}}
+
+    # A compound instruction has more than one thing to do. Silently acting on one
+    # clause is a guess; ask which one instead.
+    if _CONJUNCTION.search(lowered) and _distinct_ops(text) > 1:
+        return {"action": "none", "resource": "", "parameters": {},
+                "reply": MULTI_INTENT_REPLY}
 
 
     # No operation verb and nothing actionable named -> the user is talking, not
@@ -142,6 +210,11 @@ def plan(user_request: str) -> dict:
 
     # ------------------------------------------------------------- legacy data plane
     resource = _resource_from(text)
+
+    if resource is None:
+        # The user named an operation but nothing to perform it on.
+        return {"action": "none", "resource": "", "parameters": {},
+                "reply": AMBIGUOUS_TARGET_REPLY}
 
     if re.search(r"\b(list|show)\s+(all\s+)?(tables|resources)\b", lowered):
         return {"action": "list_tables", "resource": resource, "parameters": {}}

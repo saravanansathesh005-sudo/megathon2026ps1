@@ -335,16 +335,45 @@ def _assistant_text(decision: str, action_name: str, result: dict) -> str:
     return "I can't do that."
 
 
+# Invariant -> what a normal user should be told. Ordered by how the policy engine
+# actually decides, so the sentence shown always names the check that fired.
+_INVARIANT_REASON = {
+    "INV-002": "That is not an action I can perform.",
+    "INV-003": "This would make a destructive change to a production resource, "
+               "which your account may not do.",
+    "INV-001": "You are not authorized to perform this action.",
+}
+
+
 def _friendly_block_reason(result: dict) -> str:
-    """Short, non-sensitive explanation for a normal user."""
+    """Short, non-sensitive explanation naming the check that actually failed."""
+    resource = result.get("resource", {})
+    if resource.get("name") and not resource.get("exists", True):
+        return "There is no resource named '" + str(resource["name"]) + "'."
+
+    # "Never permitted" outranks "you specifically may not": it is the truer sentence.
+    if result["terms"]["category"] == "FORBIDDEN":
+        if result["injection"]["detected"]:
+            return ("That request asks me to work around the security policy, so I "
+                    "stopped. AEGIS decided this automatically.")
+        return "This operation is never permitted, for any account."
+
+    violated = [v["code"] for v in result["safety_invariants"]["violations"]
+                if v["code"] != "INV-004"]
+    for code in ("INV-002", "INV-003", "INV-001"):
+        if code in violated:
+            return _INVARIANT_REASON[code]
+
     if not result["authorization"]["authorized"]:
         return "You are not authorized to perform this action."
-    if result["terms"]["category"] == "FORBIDDEN":
-        return "This operation is not permitted by the security policy."
     if result["intent"]["status"] == "OUT_OF_SCOPE":
-        return "This action goes beyond what you asked for."
+        return "That goes beyond what you asked for, so I stopped."
     if result["trajectory"]["score"] >= RESTRICTION_TRAJECTORY:
         return "Repeated suspicious activity has caused AEGIS to restrict this operation."
+    blast = result.get("blast_radius", {})
+    if blast.get("score", 0) >= 7.5:
+        return ("This would affect too much at once (impact "
+                + str(blast["score"]) + "/10) to run.")
     return "This operation is too dangerous to execute."
 
 
