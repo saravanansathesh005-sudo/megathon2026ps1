@@ -205,3 +205,13 @@ it is the scenario that distinguishes us from every funded competitor in the spa
 - **Decision:** Open the competitive section of the pitch by naming Akeyless, Zenity, AgentPort, OneCLI and APort ourselves, with a one-sentence differentiation each. Every team member must be able to do this cold.
 - **Alternatives:** Wait and respond if asked — rejected. Being told about a competitor by a judge reads as not having done the work; raising it first reads as command of the field.
 - **Consequences:** Costs ~20 seconds of pitch time. Buys the entire Q&A framing. Layer 2 is now explicitly positioned as table stakes with prior art credited, which makes the Layer 3 claim credible rather than grandiose.
+
+---
+
+## 011 — Lead the pitch with the destruction ledger
+- **Date:** 2026-09-10 · **Status:** accepted
+
+- **Context:** The team supplied a table of nine destructive coding-agent incidents, Jun 2025 – Jul 2026, across seven vendors (Cursor, Replit, Claude Code, Gemini CLI, Google Antigravity, Amazon Kiro, Claude Opus 5). Two entries were spot-checked against primary sources and both confirmed with stronger detail than the summary: Claude Code [#10077](https://github.com/anthropics/claude-code/issues/10077) (filed by Mike Wolak, 21 Oct 2025 — `rm -rf` from `/`, **the default permission system was on and did not fire**), and Amazon Kiro (Dec 2025 — inherited an engineer's elevated permissions, **bypassed a mandatory two-person production approval**, ~13h AWS Cost Explorer outage, followed by a 90-day safety reset across 335 systems).
+- **Decision:** Open the pitch with this ledger rather than with a single incident. Three claims follow from it and are stated in order: **(1)** nine incidents, zero attackers — the no-attacker mode is the dominant pattern, not an edge case; **(2)** seven vendors — architectural gap, not a vendor-quality problem, which pre-empts "just use a better agent"; **(3)** three of the nine are **mechanical** failures (trailing-tilde expansion, unquoted-path truncation, misread exit code), which no increase in model capability can fix, because they are shell semantics rather than reasoning.
+- **Alternatives:** Open on Palisade alone — still used, but as the *second* beat. One incident invites "that's an outlier"; nine across seven vendors does not.
+- **Consequences:** Amazon Kiro becomes our headline Layer 1 case (identity inheritance defeating a human control) and Claude Code #10077 our headline Layer 2 case (permissions on, still destroyed everything). Amazon's remediation — more human approvals — is the foil for automated, reversibility-based gating. **Pin the Opus-5 Supabase date before printing anything**: the team's table says Jul 2026, our earlier source says early Aug 2026.

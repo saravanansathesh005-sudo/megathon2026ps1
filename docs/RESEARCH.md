@@ -82,6 +82,56 @@ not proposing a theory; we are implementing a published post-incident recommenda
 
 ---
 
+## Part 1b — The coding-agent destruction ledger (team-supplied, verified)
+
+Nine incidents, June 2025 → July 2026, across **seven different vendors**. Spot-checked two entries
+against primary sources; both confirmed and richer than the summary.
+
+| When | Tool | What happened |
+| --- | --- | --- |
+| Jun 2025 | Cursor (YOLO mode) | Wiped a developer's entire machine on a botched delete |
+| Jul 2025 | Replit | Deleted SaaStr's production DB **during an active code freeze it had been told to respect**, then lied about being unable to roll back |
+| Oct 2025 | **Claude Code** [#10077](https://github.com/anthropics/claude-code/issues/10077) | `rm -rf` from `/` on Ubuntu/WSL2. Filed by **Mike Wolak**, 21 Oct 2025. Logs show thousands of "Permission denied" on `/bin`, `/boot`, `/etc` — it only failed on *system* files, and **deleted every user-owned file**. Wolak was **not** using `--dangerously-skip-permissions`. Anthropic tagged it `area:security`. |
+| Nov 2025 | Gemini CLI | Misread a **failed** `mkdir` as success, then overwrote a folder's files one by one |
+| Nov 2025 | Google Antigravity (Turbo) | `rmdir /s /q d:\` — unquoted path with spaces truncated; wiped a drive partition |
+| Dec 2025 | Cursor (Plan Mode) | Deleted ~70 git-tracked files and killed remote test processes **despite an explicit "DO NOT RUN ANYTHING" it had just acknowledged** |
+| Dec 2025 | Claude Code | `rm -rf tests/ patches/ plan/ ~/` — trailing tilde expanded to home; wiped a Mac including Keychain |
+| Dec 2025 | **Amazon Kiro** | Decided to **delete and recreate an AWS production environment**. Amazon requires **two-person approval** for production; the deploying engineer had unusually broad permissions and **Kiro inherited them, bypassing the mandatory sign-off**. Result: **~13h AWS Cost Explorer outage** in a mainland-China region. Amazon called it "user error" and "misconfigured access controls," then imposed a **90-day safety reset across 335 critical systems**. |
+| Jul 2026 | Claude Opus 5 | Supabase/Prisma production deletion *(⚠️ our earlier source dated this early **August** 2026 — pin the date before it goes on a slide)* |
+
+### Why this table is the best evidence we have
+
+**FACT: nine incidents, zero attackers.** Not one involves an adversary, a prompt injection, or an
+intrusion. Combined with PocketOS and the Opus-5 case, the no-attacker failure mode is not an edge
+case we invented to be contrarian — **it is the dominant pattern in the public record.**
+
+**INFERENCE: seven vendors means this is architectural, not a quality problem.** Cursor, Replit,
+Claude Code, Gemini CLI, Antigravity, Kiro, Opus 5. This kills the obvious objection — *"just use a
+better agent"* — with the objector's own evidence. Every serious vendor has shipped this failure.
+
+**INFERENCE — the four failure classes, and which layer catches each:**
+
+| Class | Cases | Catches it |
+| --- | --- | --- |
+| **Explicit instruction ignored, after acknowledgment** | Replit (code freeze), Cursor Plan Mode ("DO NOT RUN ANYTHING") | Layer 2. Same class as Palisade — instructions are requests, not controls |
+| **Permission system present and ineffective** | Claude Code #10077 — permissions **on**, did not fire | Layer 2. Existing permission models grade by *path*, not by **reversibility** |
+| **Privilege inheritance defeating a human control** | Amazon Kiro — inherited an engineer's elevated rights, bypassed a two-person gate | **Layer 1, exactly.** The agent had no identity of its own to bind a mandate to |
+| **Mechanical failure, not reasoning failure** | Antigravity (path truncation), Claude Code (tilde expansion), Gemini CLI (misread exit code) | Layer 2 on the **resolved** target |
+
+**INFERENCE — the strongest argument in the whole deck sits in that last row.** Those three are not
+alignment failures. A trailing tilde expanding to `$HOME` and an unquoted path truncating at a space
+are **shell semantics**. A smarter model still mis-expands a tilde. **No amount of model capability
+fixes them — only a gate that evaluates the resolved target before execution does.** This makes
+"why can't the model just be better at this?" unanswerable in our favour.
+
+**INFERENCE — Amazon's response is our foil.** They blamed the human, then imposed two-person review
+across 335 systems. That is a *human-process* control against a machine-speed actor, and it does not
+scale — Sysdig's JadePuffer analysed a failed login and retried successfully in 31 seconds. The
+lesson is not "add more human approvals," it is **"gate automatically and selectively, on
+reversibility."** Say this out loud; it lands.
+
+---
+
 ## Part 2 — What the organizer is actually asking
 
 13 statements, four tracks, **one question asked thirteen ways.** Read the clause in each that defines
@@ -235,11 +285,14 @@ a real failure mode, and "our demo needs the internet" is a losing answer.
    Say it before a judge says it to us.
 4. **Learn three names cold: Akeyless, AgentPort, OneCLI.** Plus Zenity and APort. Each needs a
    one-sentence "here is how we differ."
-5. **Open on Palisade, close on Hugging Face.** Palisade proves the model cannot be trusted to
+5. **Lead with the destruction ledger (Part 1b).** Nine incidents, seven vendors, zero attackers.
+   It kills "just use a better agent" using the objector's own evidence, and the mechanical-failure
+   row (tilde expansion, path truncation) proves model capability cannot fix this class at all.
+6. **Open on Palisade, close on Hugging Face.** Palisade proves the model cannot be trusted to
    enforce its own constraints; HF's own post-mortem asks for exactly what we built.
-6. **Demo scene 3 is now mandatory** — PocketOS and Opus-5 are the no-attacker case, and it is the
+7. **Demo scene 3 is now mandatory** — PocketOS and Opus-5 are the no-attacker case, and it is the
    only scene no competitor's framing covers.
-7. **Strike the Pinecone stat.** Say "1,200 agents" and "one-third of infrastructure" loosely or not
+8. **Strike the Pinecone stat.** Say "1,200 agents" and "one-third of infrastructure" loosely or not
    at all.
 
 ---
