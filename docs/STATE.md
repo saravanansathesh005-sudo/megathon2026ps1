@@ -4,15 +4,27 @@
 
 ## Phase
 
-`STRATEGY COMPLETE — awaiting team ratification before any code`
+`PHASE 0 COMPLETE — foundation built, awaiting sign-off before Phase 1`
+
+Concept is **AEGIS** (Autonomous Execution Guard & Impact Safety), consequence-centric.
+See [SOLUTION.md](SOLUTION.md) and [ARCHITECTURE.md](ARCHITECTURE.md). The earlier "Warrant" /
+mandate-drift design is superseded and preserved in git history at commit `4034931`.
+
+**Phase 0 delivered:** FastAPI skeleton, env-driven config, SQLite + SQLAlchemy with idempotent
+init, structured JSON logging with trace-id propagation, `GET /api/health`, `GET /api/version`,
+pytest suite (18 passing). No enforcement, no agent, no LLM, no frontend — by design.
+
+**Do not start Phase 1 without explicit sign-off.**
 
 ## What happened
 
 The official statement arrived: **13 problem statements across 4 tracks** (Cybersecurity, Reverse
 Logistics, GeriCare, AI for Humanity). Phases 1–8 of the strategy pipeline were run in full.
 
-**Selected: Track 1, PS 1 — Runtime Security Harness for AI Agents.** Concept name **Warrant**.
-Reasoning in decision 005; the differentiating insight in decision 006.
+**Selected: Track 1, PS 1 — Runtime Security Harness for AI Agents.** Reasoning in decision 005.
+The concept subsequently evolved from *Warrant* (mandate drift) to **AEGIS** (consequence-centric)
+after the team established that runtime enforcement, trajectory monitoring and cross-session
+detection are all prior art — see `SOLUTION.md` §1 and decisions 009–010.
 
 ## Where things stand
 
@@ -20,10 +32,13 @@ Reasoning in decision 005; the differentiating insight in decision 006.
 | --- | --- |
 | `docs/PROBLEM.md` | Official statement, verbatim. **Unmodified — do not edit.** |
 | `docs/RESEARCH.md` | Complete. Fact-check of the brief, the unifying thesis across all 13 PSes, organizer intel, GitHub/competitor research, resources, and the 20 jury questions with answers. |
-| `docs/ARCHITECTURE.md` | Complete blueprint A–Z for Warrant. Designed, **not built**. |
-| `docs/DECISIONS.md` | 001–008. Decisions 005–008 carry the selection, the wedge, the deterministic-core rule, and the console budget. |
+| `docs/SOLUTION.md` | AEGIS design: discussion summary, proposed solution, prototype plan, architecture. |
+| `docs/ARCHITECTURE.md` | System architecture as built + target pipeline. Supersedes the Warrant blueprint. |
+| `docs/API.md` | Endpoint reference. |
+| `docs/DECISIONS.md` | 001–011. |
 | `docs/TODO.md` | Ratification checklist, pre-event build, hour-by-hour plan. |
-| `src/`, `tests/` | **Empty.** No code, no dependencies, no framework — as instructed. |
+| `backend/` | Phase 0 foundation. 18 tests passing. |
+| `frontend/` | Directory structure only — not implemented. |
 
 ## Deep research pass (2026-09-10, evening)
 
@@ -49,12 +64,12 @@ them analysed.
 
 ## The three things that decide whether this wins
 
-1. **The wedge holds.** Mandate drift, not threat detection. Layers 1 and 2 are prior art — APort,
-   Zenity, Lasso all ship equivalents. Every innovation claim rides on Layer 3. If drift scoring
-   produces no usable signal, the concept collapses to a competent reimplementation of existing
-   products.
-2. **Scene 2 exists.** The legitimate engineer who escalates, hits the gate, confirms, and continues.
-   The brief says explicitly that a wall is not a solution. Most teams will demo only the block.
+1. **Blast radius is measured, not estimated.** Category-based risk scoring is what let Claude Code
+   #10077 through with permissions switched on. If we ship a static risk map, we have built the
+   prior art. `SELECT COUNT(*)` before the delete is the cheapest differentiator we have.
+2. **The legitimate-work scenario exists.** An authorised operator hits CONFIRM, sees evidence,
+   approves, and the action succeeds. The brief says explicitly that a wall is not a solution, and
+   most teams will demo only the block.
 3. **Nobody cites the Pinecone number.** It failed verification (`docs/RESEARCH.md` Part 0). In a
    cybersecurity track, one false statistic on a slide ends the Q&A badly.
 
@@ -70,10 +85,10 @@ them analysed.
 
 ## Immediate next action
 
-Ratify decision 005, then start the pre-event work in `docs/TODO.md` P1 — the proxy substrate and
-scenario harness are domain-independent within this PS and can be built before the clock starts.
+**Sign off Phase 0, then authorise Phase 1.** Phase 1 scope: action model, identity/authorization,
+execution invariants, deterministic policy engine, audit log.
 
-**No application code until ratification.**
+**Do not start Phase 1 without explicit sign-off.**
 
 ---
 
@@ -84,3 +99,6 @@ scenario harness are domain-independent within this PS and can be built before t
 | 2026-09-10 | Workspace initialised, commit `d457a0a`. |
 | 2026-09-10 | Strategy pipeline requested; blocked on missing statement. Organizer intelligence and hour-0 playbook written instead. Decisions 002–004. |
 | 2026-09-10 | Statement received (13 PSes / 4 tracks). Phases 1–8 run. Track 1 PS 1 selected; "Warrant" blueprint complete. Decisions 005–008. |
+| 2026-09-10 | Deep research pass; CSTM-Bench correction. Decisions 009–011. |
+| 2026-09-10 | Concept pivoted to AEGIS (consequence-centric); `SOLUTION.md` written. |
+| 2026-09-10 | **Phase 0 built:** backend foundation, 18 tests passing, README/ARCHITECTURE/API docs. |
