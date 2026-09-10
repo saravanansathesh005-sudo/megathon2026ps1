@@ -325,6 +325,43 @@ def list_messages(conversation_id: int, db: Session = Depends(get_db),
                          for m in rows]}
 
 
+@router.post("/conversations/{conversation_id}/messages/{message_id}/truncate")
+def truncate_conversation(conversation_id: int, message_id: int,
+                          db: Session = Depends(get_db),
+                          identity: Identity = Depends(current_identity)):
+    """Drop a message and everything after it, so an edited turn can be re-run.
+
+    The transcript is a convenience for the person reading it; the audit chain is
+    the record. Editing is therefore written to the chain BEFORE the messages go,
+    carrying the original text - so rewriting a conversation can never quietly
+    erase what was actually attempted. Only your own messages, in your own
+    conversation, and only ones you sent.
+    """
+    _own_conversation(db, identity, conversation_id)
+    target = db.get(Message, message_id)
+    if target is None or target.conversation_id != conversation_id:
+        raise HTTPException(status_code=404, detail="message not found")
+    if target.role != "user":
+        raise HTTPException(status_code=400,
+                            detail="only your own messages can be edited")
+
+    doomed = db.scalars(select(Message)
+                        .where(Message.conversation_id == conversation_id,
+                               Message.id >= message_id)).all()
+    audit.record(db, event_type="conversation.edited",
+                 username=identity.username, agent_id=identity.agent_id,
+                 session_id=identity.session_id, action_name="edit_message",
+                 resource_name="conversations", decision="ALLOW",
+                 detail={"conversation_id": conversation_id,
+                         "from_message_id": message_id,
+                         "messages_removed": len(doomed),
+                         "original_text": target.content[:2000]})
+    for message in doomed:
+        db.delete(message)
+    db.commit()
+    return {"removed": len(doomed)}
+
+
 def _assistant_text(decision: str, action_name: str, result: dict) -> str:
     spec = ACTIONS.get(action_name)
     label = spec.description.lower() if spec else action_name
@@ -390,8 +427,9 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db),
         db.add(convo)
         db.flush()
 
-    db.add(Message(conversation_id=convo.id, user_id=identity.user_id,
-                   role="user", content=payload.message, created_at=utc_now()))
+    user_message = Message(conversation_id=convo.id, user_id=identity.user_id,
+                           role="user", content=payload.message, created_at=utc_now())
+    db.add(user_message)
     convo.updated_at = utc_now()
     db.flush()
 
@@ -410,7 +448,8 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db),
                      session_id=identity.session_id,
                      detail={"source": source})
         db.commit()
-        return {"conversation_id": convo.id, "action_id": None, "decision": None,
+        return {"conversation_id": convo.id, "user_message_id": user_message.id,
+                "action_id": None, "decision": None,
                 "message": reply, "kind": "text",
                 "proposal": {"action": "none", "resource": "", "parameters": {},
                              "reasoning_summary": proposal.get("reasoning_summary", ""),
@@ -440,6 +479,7 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db),
 
     return {
         "conversation_id": convo.id,
+        "user_message_id": user_message.id,
         "action_id": action.id,
         "decision": decision,
         "message": text,

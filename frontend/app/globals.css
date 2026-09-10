@@ -21,3 +21,21 @@ body {
   overflow-wrap: anywhere;
   word-break: break-word;
 }
+
+/* The transcript scrolls, but the bar itself is chrome the reader does not need.
+   Keyboard and wheel scrolling are untouched - only the visual bar is removed. */
+.no-scrollbar {
+  scrollbar-width: none;          /* Firefox */
+  -ms-overflow-style: none;       /* legacy Edge */
+}
+.no-scrollbar::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+/* Softens the hard cut where the transcript meets the composer, so a half-clipped
+   line of text fades out instead of being sliced through. */
+.fade-bottom {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 34px), transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 34px), transparent 100%);
+}

@@ -42,6 +42,9 @@ export const api = {
   conversations: () => call<any>("/api/conversations"),
   newConversation: () => call<any>("/api/conversations", { method: "POST" }),
   messages: (id: number) => call<any>("/api/conversations/" + id + "/messages"),
+  truncate: (id: number, messageId: number) =>
+    call<any>("/api/conversations/" + id + "/messages/" + messageId + "/truncate",
+              { method: "POST" }),
   chat: (message: string, conversation_id?: number | null) =>
     call<any>("/api/chat", {
       method: "POST",

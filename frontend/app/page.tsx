@@ -50,6 +50,16 @@ function Shield({ size = 20 }: { size?: number }) {
   );
 }
 
+function Pencil({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M4 20h4L19 9a2.12 2.12 0 0 0-3-3L5 17v3z"
+        stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      <path d="M14.5 6.5l3 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function GoogleMark() {
   return (
     <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
@@ -82,6 +92,8 @@ export default function Assistant() {
   const [convoId, setConvoId] = useState<number | null>(null);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
+  const [editing, setEditing] = useState<number | string | null>(null);
+  const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
@@ -133,16 +145,24 @@ export default function Assistant() {
     setMsgs(messages);
   }
 
-  function newChat() { setConvoId(null); setMsgs([]); setInput(""); }
+  function newChat() {
+    setConvoId(null); setMsgs([]); setInput(""); setEditing(null);
+  }
 
-  async function send() {
-    const text = input.trim();
+  async function send(override?: string) {
+    const text = (override ?? input).trim();
     if (!text || busy) return;
-    setInput(""); setBusy(true); setError(null);
-    setMsgs((m) => [...m, { id: "tmp-" + Date.now(), role: "user", content: text }]);
+    if (override === undefined) setInput("");
+    setBusy(true); setError(null);
+    const localId = "tmp-" + Date.now();
+    setMsgs((m) => [...m, { id: localId, role: "user", content: text }]);
     try {
       const r = await api.chat(text, convoId);
       setConvoId(r.conversation_id);
+      // Adopt the stored id so this turn can be edited without reopening the chat.
+      if (r.user_message_id) {
+        setMsgs((m) => m.map((x) => (x.id === localId ? { ...x, id: r.user_message_id } : x)));
+      }
       setMsgs((m) => [...m, {
         id: "a-" + (r.action_id ?? Date.now()), role: "assistant", content: r.message,
         kind: r.kind, action_id: r.action_id, confirmation: r.confirmation,
@@ -198,6 +218,24 @@ export default function Assistant() {
     try { await api.cancel(msg.confirmation.id); } catch { /* already resolved */ }
     setMsgs((m) => m.map((x) => (x.id === msg.id ? { ...x, done: true } : x))
       .concat({ id: "c-" + msg.id, role: "assistant", content: "Cancelled — nothing was changed." }));
+  }
+
+  /** Re-run the conversation from an edited message, ChatGPT style.
+
+   * Everything after the edited turn answered a request that no longer exists, so
+   * it goes. The server records the edit in the audit chain before removing the
+   * messages, so the original text is never lost from the security record.
+   */
+  async function saveEdit(msg: Msg) {
+    const text = draft.trim();
+    if (!text || busy) return;
+    const at = msgs.findIndex((x) => x.id === msg.id);
+    setEditing(null);
+    setMsgs((m) => m.slice(0, at < 0 ? m.length : at));
+    if (convoId && typeof msg.id === "number") {
+      try { await api.truncate(convoId, msg.id); } catch { /* already gone */ }
+    }
+    await send(text);
   }
 
   const font = "font-['Outfit',ui-sans-serif,system-ui,sans-serif]";
@@ -337,7 +375,7 @@ export default function Assistant() {
       </aside>
 
       <section className="flex min-w-0 flex-1 flex-col">
-        <div className="flex-1 overflow-y-auto overflow-x-hidden px-5 py-10">
+        <div className="no-scrollbar fade-bottom flex-1 overflow-y-auto overflow-x-hidden px-5 pb-16 pt-10">
           <div className="mx-auto w-full max-w-[720px]">
             {msgs.length === 0 ? (
               <div className="pt-[8vh] text-center">
@@ -364,11 +402,52 @@ export default function Assistant() {
                 {msgs.map((m) => (
                   <div key={m.id}>
                     {m.role === "user" ? (
-                      <div className="flex justify-end">
-                        <div className="wrap-any max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-md border border-white/[0.07] bg-white/[0.06] px-4 py-2.5 text-[14px] text-white">
-                          {m.content}
+                      editing === m.id ? (
+                        <div className="flex justify-end">
+                          <div className="w-full max-w-[80%] rounded-2xl border border-cyan-400/30 bg-white/[0.06] p-3">
+                            <textarea
+                              autoFocus
+                              value={draft}
+                              onChange={(e) => setDraft(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" && !e.shiftKey) {
+                                  e.preventDefault(); saveEdit(m);
+                                } else if (e.key === "Escape") {
+                                  setEditing(null);
+                                }
+                              }}
+                              rows={Math.min(14, draft.split("\n").length + 1)}
+                              aria-label="Edit your message"
+                              className="wrap-any w-full resize-none bg-transparent text-[14px] leading-relaxed text-white outline-none" />
+                            <div className="mt-2 flex items-center justify-end gap-2">
+                              <span className="mr-auto text-[11px] text-slate-500">
+                                Replies after this one will be replaced.
+                              </span>
+                              <button onClick={() => setEditing(null)}
+                                className="rounded-lg px-3 py-1.5 text-[12.5px] text-slate-400 transition hover:text-slate-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400">
+                                Cancel
+                              </button>
+                              <button onClick={() => saveEdit(m)} disabled={busy || !draft.trim()}
+                                className="rounded-lg bg-cyan-400 px-3.5 py-1.5 text-[12.5px] font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400">
+                                Send
+                              </button>
+                            </div>
+                          </div>
                         </div>
-                      </div>
+                      ) : (
+                        <div className="group flex items-start justify-end gap-1">
+                          <button
+                            onClick={() => { setEditing(m.id); setDraft(m.content); }}
+                            aria-label="Edit message"
+                            title="Edit message"
+                            className="mt-1.5 shrink-0 rounded-lg p-1.5 text-slate-500 opacity-0 transition hover:bg-white/[0.06] hover:text-slate-200 focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400 group-hover:opacity-100">
+                            <Pencil />
+                          </button>
+                          <div className="wrap-any max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-md border border-white/[0.07] bg-white/[0.06] px-4 py-2.5 text-[14px] text-white">
+                            {m.content}
+                          </div>
+                        </div>
+                      )
                     ) : m.kind === "blocked" ? (
                       <div className="rounded-2xl border border-rose-500/20 bg-rose-500/[0.07] p-4">
                         <div className="mb-1.5 flex items-center gap-2 text-[13px] font-semibold text-rose-300">
@@ -491,7 +570,7 @@ export default function Assistant() {
                 placeholder="Message AEGIS…"
                 aria-label="Message AEGIS"
                 className="wrap-any max-h-[340px] min-w-0 flex-1 resize-none bg-transparent py-2 text-[14.5px] leading-relaxed text-white outline-none placeholder:text-slate-500 disabled:opacity-50" />
-              <button onClick={send} disabled={busy || !input.trim()}
+              <button onClick={() => send()} disabled={busy || !input.trim()}
                 className="mb-0.5 flex shrink-0 items-center gap-1.5 rounded-full bg-cyan-400 px-5 py-2.5 text-[13px] font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:opacity-30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400">
                 Send
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
