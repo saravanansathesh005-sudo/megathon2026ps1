@@ -126,16 +126,28 @@ def test_trajectory_escalates_policy_decision(client, editor):
 
 # --------------------------------------------------------------- agent boundary
 
-def test_extreme_trajectory_blocks_outright(client, editor):
+def test_extreme_trajectory_blocks_dangerous_work(client, editor):
+    """At EXTREME the destructive request stays blocked."""
     for _ in range(5):
         client.post("/api/chat", json={"message": "drop the users table"},
                     headers=auth(editor))
-    hot = client.post("/api/actions/analyze",
-                      json={"user_request": "add a row to test_table",
-                            "action": "insert_record", "resource": "test_table"},
+    hot = client.post("/api/chat", json={"message": "drop the users table"},
                       headers=auth(editor)).json()["analysis"]
     assert hot["trajectory"]["score"] >= 16
     assert hot["policy_decision"]["decision"] == "BLOCK"
+
+
+def test_extreme_trajectory_does_not_block_routine_work(client, editor):
+    """Trajectory is behavioural risk, not permission: routine work is slowed, not refused."""
+    for _ in range(5):
+        client.post("/api/chat", json={"message": "drop the users table"},
+                    headers=auth(editor))
+    routine = client.post("/api/actions/analyze",
+                          json={"user_request": "add a row to test_table",
+                                "action": "insert_record", "resource": "test_table"},
+                          headers=auth(editor)).json()["analysis"]
+    assert routine["trajectory"]["score"] >= 16
+    assert routine["policy_decision"]["decision"] == "REQUIRE_CONFIRMATION"
 
 
 def test_agent_cannot_execute_directly(client, viewer):
@@ -185,7 +197,7 @@ def test_execution_without_approval_is_refused(client, admin):
 def test_approval_replay_is_prevented(client, admin):
     proposal = _propose_test_delete(client, admin)
     approval_id = proposal["analysis"]["approval"]["id"]
-    client.post("/api/approvals/" + str(approval_id) + "/approve", headers=auth(admin))
+    client.post("/api/confirmations/" + str(approval_id) + "/confirm", headers=auth(admin))
 
     first = client.post("/api/actions/execute", json={"action_id": proposal["action_id"]},
                         headers=auth(admin))
@@ -199,14 +211,14 @@ def test_approval_replay_is_prevented(client, admin):
 def test_wrong_user_cannot_confirm(client, admin, editor):
     proposal = _propose_test_delete(client, admin)
     approval_id = proposal["analysis"]["approval"]["id"]
-    r = client.post("/api/approvals/" + str(approval_id) + "/approve", headers=auth(editor))
+    r = client.post("/api/confirmations/" + str(approval_id) + "/confirm", headers=auth(editor))
     assert r.status_code == 403
     assert r.json()["detail"]["invariant"] == "INV-006"
 
 
 def test_wrong_user_cannot_execute_another_users_action(client, admin, editor):
     proposal = _propose_test_delete(client, admin)
-    client.post("/api/approvals/" + str(proposal["analysis"]["approval"]["id"]) + "/approve",
+    client.post("/api/confirmations/" + str(proposal["analysis"]["approval"]["id"]) + "/confirm",
                 headers=auth(admin))
     r = client.post("/api/actions/execute", json={"action_id": proposal["action_id"]},
                     headers=auth(editor))
@@ -216,7 +228,7 @@ def test_wrong_user_cannot_execute_another_users_action(client, admin, editor):
 def test_expired_approval_cannot_execute(client, admin, monkeypatch):
     proposal = _propose_test_delete(client, admin)
     approval_id = proposal["analysis"]["approval"]["id"]
-    client.post("/api/approvals/" + str(approval_id) + "/approve", headers=auth(admin))
+    client.post("/api/confirmations/" + str(approval_id) + "/confirm", headers=auth(admin))
 
     from datetime import timedelta
 
@@ -238,7 +250,7 @@ def test_expired_approval_cannot_execute(client, admin, monkeypatch):
 def test_modified_payload_invalidates_approval(client, admin):
     proposal = _propose_test_delete(client, admin)
     approval_id = proposal["analysis"]["approval"]["id"]
-    client.post("/api/approvals/" + str(approval_id) + "/approve", headers=auth(admin))
+    client.post("/api/confirmations/" + str(approval_id) + "/confirm", headers=auth(admin))
 
     from app.db import SessionLocal
     from app.models import Action
@@ -266,7 +278,7 @@ def test_admin_approval_requires_privileged_role(client, editor, admin):
         import pytest
 
         pytest.skip("scenario did not reach admin_approval")
-    r = client.post("/api/approvals/" + str(approval["id"]) + "/approve", headers=auth(editor))
+    r = client.post("/api/confirmations/" + str(approval["id"]) + "/confirm", headers=auth(editor))
     assert r.status_code == 403
 
 
@@ -288,7 +300,7 @@ def test_allowed_read_executes(client, admin):
 
 def test_approved_delete_executes_and_commits(client, admin):
     proposal = _propose_test_delete(client, admin)
-    client.post("/api/approvals/" + str(proposal["analysis"]["approval"]["id"]) + "/approve",
+    client.post("/api/confirmations/" + str(proposal["analysis"]["approval"]["id"]) + "/confirm",
                 headers=auth(admin))
     r = client.post("/api/actions/execute", json={"action_id": proposal["action_id"]},
                     headers=auth(admin))
@@ -307,7 +319,7 @@ def test_verification_failure_triggers_rollback(client, admin):
                                  "parameters": {"filter": "all",
                                                 "_demo_force_verify_fail": True}},
                            headers=auth(admin)).json()
-    client.post("/api/approvals/" + str(proposal["analysis"]["approval"]["id"]) + "/approve",
+    client.post("/api/confirmations/" + str(proposal["analysis"]["approval"]["id"]) + "/confirm",
                 headers=auth(admin))
     r = client.post("/api/actions/execute", json={"action_id": proposal["action_id"]},
                     headers=auth(admin)).json()
@@ -351,14 +363,14 @@ def test_audit_tampering_is_detected(client, admin):
 def test_every_execution_produces_audit_events(client, admin):
     before = len(client.get("/api/audit", headers=auth(admin)).json()["events"])
     proposal = _propose_test_delete(client, admin)
-    client.post("/api/approvals/" + str(proposal["analysis"]["approval"]["id"]) + "/approve",
+    client.post("/api/confirmations/" + str(proposal["analysis"]["approval"]["id"]) + "/confirm",
                 headers=auth(admin))
     client.post("/api/actions/execute", json={"action_id": proposal["action_id"]},
                 headers=auth(admin))
     events = client.get("/api/audit", headers=auth(admin)).json()["events"]
     kinds = {e["event_type"] for e in events}
     assert len(events) > before
-    assert {"action.analyzed", "approval.requested", "approval.granted",
+    assert {"action.analyzed", "confirmation.requested", "confirmation.given",
             "snapshot.created", "execution.committed"} <= kinds
 
 

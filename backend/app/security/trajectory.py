@@ -53,6 +53,12 @@ def analyse(db: Session, user_id: int, role: str, action_name: str,
         score += pts
         signals.append(str(len(escalations)) + " privilege-escalation attempt(s) (+" + str(pts) + ")")
 
+    forbidden = [a for a in history if a.terms_category == "FORBIDDEN"]
+    if forbidden:
+        pts = min(6, 3 * len(forbidden))
+        score += pts
+        signals.append(str(len(forbidden)) + " forbidden/bypass attempt(s) (+" + str(pts) + ")")
+
     expansions = [a for a in history if a.intent_status in ("SCOPE_EXPANSION", "OUT_OF_SCOPE")]
     if expansions:
         pts = min(6, 2 * len(expansions))

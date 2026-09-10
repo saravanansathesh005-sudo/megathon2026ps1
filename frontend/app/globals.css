@@ -3,7 +3,13 @@
 @tailwind utilities;
 
 body {
-  background: #070a0f;
+  background: #0b0f16;
   color: #d8e2ef;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+}
+
+/* The security terminal keeps a monospace, console feel. */
+.font-mono, .font-mono * {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }

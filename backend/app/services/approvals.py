@@ -10,14 +10,15 @@ from app.config import get_settings
 from app.logging_config import utc_now
 from app.models import Action, ApprovalRequest
 from app.security.identity import Identity
-from app.security.policy import REQUIRE_ADMIN_APPROVAL
-from app.security.registry import APPROVER_ROLES
+
 
 settings = get_settings()
 
 
 def create(db: Session, action: Action, identity: Identity, decision: str) -> ApprovalRequest:
-    level = "admin_approval" if decision == REQUIRE_ADMIN_APPROVAL else "confirmation"
+    # AEGIS decides automatically; the only human step that exists is the requesting
+    # user confirming their own risky action. There is no administrator approval level.
+    level = "confirmation"
     request = ApprovalRequest(
         action_id=action.id,
         requester_user_id=identity.user_id,
@@ -34,12 +35,7 @@ def create(db: Session, action: Action, identity: Identity, decision: str) -> Ap
 
 
 def can_decide(approval: ApprovalRequest, identity: Identity) -> tuple[bool, str]:
-    """Who is allowed to act on this approval."""
-    if approval.required_level == "admin_approval":
-        if identity.role not in APPROVER_ROLES:
-            return False, "admin approval requires role admin or security_admin"
-        return True, "approver role satisfied"
-    # Confirmation is the requester's own to give, in the same session.
+    """Only the requesting user, in the originating session, may confirm."""
     if identity.user_id != approval.requester_user_id:
         return False, "confirmation must be given by the requesting user"
     if identity.session_id != approval.requester_session_id:

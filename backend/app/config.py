@@ -22,8 +22,8 @@ class Settings(BaseSettings):
 
     # Identity
     SERVICE_NAME: str = "aegis-backend"
-    VERSION: str = "0.2.0"
-    PHASE: str = "1 - security engine"
+    VERSION: str = "0.3.0"
+    PHASE: str = "3 - gemini + oauth + terminal"
     ENVIRONMENT: str = "development"
 
     # Persistence
@@ -33,6 +33,20 @@ class Settings(BaseSettings):
     JWT_SECRET: str = "dev-only-insecure-secret-change-me"
     TOKEN_TTL_MINUTES: int = 240
     APPROVAL_TTL_SECONDS: int = 180
+
+    # Gemini planning layer. Absent key -> deterministic fallback planner.
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-2.0-flash"
+    GEMINI_TIMEOUT_SECONDS: int = 12
+
+    # Google OAuth. Absent client id -> Google sign-in unavailable.
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_REDIRECT_URI: str = "http://localhost:8000/api/auth/google/callback"
+    FRONTEND_ORIGIN: str = "http://localhost:3000"
+
+    # Demo password login for the seeded accounts. Refused when ENVIRONMENT=production.
+    ALLOW_PASSWORD_LOGIN: bool = True
 
     # Observability
     LOG_LEVEL: str = "INFO"

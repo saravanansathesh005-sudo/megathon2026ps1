@@ -1,309 +1,285 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { Analysis, Card, Row } from "@/components/Panels";
-import { api, DECISION_STYLE, loadToken, setToken } from "@/lib/api";
+import { api, loadToken, setToken } from "@/lib/api";
 
-const NAV = ["Overview", "Live Actions", "Trajectory", "Approvals", "Audit"];
+/** Normal user interface. Contains no security navigation, by design. */
 
-const DEMO_USERS = [
-  { u: "viewer", p: "viewer123" },
-  { u: "editor", p: "editor123" },
-  { u: "admin", p: "admin123" },
-  { u: "secadmin", p: "secadmin123" },
+const DEMO_ACCOUNTS = [
+  { u: "user", p: "user123", label: "Uma User" },
+  { u: "user2", p: "user2123", label: "Ravi Second" },
 ];
 
-export default function Console() {
+type Msg = {
+  id: number | string;
+  role: "user" | "assistant";
+  content: string;
+  kind?: string;
+  action_id?: number | null;
+  confirmation?: any;
+  decision?: string;
+  proposal?: any;
+  done?: boolean;
+};
+
+export default function Assistant() {
   const [me, setMe] = useState<any>(null);
-  const [view, setView] = useState("Overview");
-  const [message, setMessage] = useState("Delete all users");
-  const [current, setCurrent] = useState<any>(null);
-  const [actionId, setActionId] = useState<number | null>(null);
-  const [exec, setExec] = useState<any>(null);
-  const [board, setBoard] = useState<any>(null);
-  const [actions, setActions] = useState<any[]>([]);
-  const [approvals, setApprovals] = useState<any[]>([]);
-  const [audit, setAudit] = useState<any[]>([]);
-  const [chain, setChain] = useState<any>(null);
+  const [cfg, setCfg] = useState<any>({ google: false, password: true });
+  const [convos, setConvos] = useState<any[]>([]);
+  const [convoId, setConvoId] = useState<number | null>(null);
+  const [msgs, setMsgs] = useState<Msg[]>([]);
+  const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const bottom = useRef<HTMLDivElement>(null);
 
-  const refresh = useCallback(async () => {
-    try {
-      const [d, a, ap, au, cv] = await Promise.all([
-        api.dashboard(), api.actions(), api.approvals(), api.audit(), api.verifyAudit(),
-      ]);
-      setBoard(d); setActions(a.actions); setApprovals(ap.approvals);
-      setAudit(au.events); setChain(cv);
-    } catch { /* not logged in */ }
+  const refreshConvos = useCallback(async () => {
+    try { setConvos((await api.conversations()).conversations); } catch { /* signed out */ }
   }, []);
 
   useEffect(() => {
+    api.authConfig().then(setCfg).catch(() => {});
     const t = loadToken();
-    if (t) api.me().then((u) => { setMe(u); refresh(); }).catch(() => setToken(null));
-  }, [refresh]);
+    if (t) api.me().then((u) => { setMe(u); refreshConvos(); }).catch(() => setToken(null));
+  }, [refreshConvos]);
 
-  async function login(u: string, p: string) {
+  useEffect(() => { bottom.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs]);
+
+  async function signInWithGoogle() {
     setError(null);
     try {
-      const r = await api.login(u, p);
-      setToken(r.token);
-      setMe(await api.me());
-      setCurrent(null); setExec(null); setActionId(null);
-      await refresh();
-    } catch { setError("login failed"); }
+      const { authorization_url } = await api.googleStart();
+      window.location.href = authorization_url;
+    } catch (e: any) {
+      setError(e?.body?.detail || "Google sign-in is not configured on this server.");
+    }
   }
 
-  async function send() {
-    setBusy(true); setError(null); setExec(null);
+  async function signInWithPassword(u: string, p: string) {
+    setError(null);
     try {
-      const r = await api.chat(message);
-      setCurrent(r.analysis); setActionId(r.action_id);
-      await refresh();
-    } catch (e: any) { setError(e?.body?.detail || "request failed"); }
+      setToken((await api.login(u, p)).token);
+      setMe(await api.me());
+      await refreshConvos();
+    } catch { setError("Sign-in failed."); }
+  }
+
+  async function openConversation(id: number) {
+    setConvoId(id);
+    const { messages } = await api.messages(id);
+    setMsgs(messages);
+  }
+
+  function newChat() { setConvoId(null); setMsgs([]); setInput(""); }
+
+  async function send() {
+    const text = input.trim();
+    if (!text || busy) return;
+    setInput(""); setBusy(true); setError(null);
+    setMsgs((m) => [...m, { id: "tmp-" + Date.now(), role: "user", content: text }]);
+    try {
+      const r = await api.chat(text, convoId);
+      setConvoId(r.conversation_id);
+      setMsgs((m) => [...m, {
+        id: "a-" + r.action_id, role: "assistant", content: r.message,
+        kind: r.kind, action_id: r.action_id, confirmation: r.confirmation,
+        decision: r.decision, proposal: r.proposal,
+      }]);
+      if (r.decision === "ALLOW") await run(r.action_id);
+      await refreshConvos();
+    } catch (e: any) {
+      setError(e?.status === 401 ? "Your session expired. Sign in again."
+        : "Something went wrong. Please try again.");
+    }
     setBusy(false);
   }
 
-  async function run() {
-    if (!actionId) return;
-    setBusy(true); setError(null);
+  async function run(actionId: number) {
     try {
-      const r = await api.execute(actionId);
-      setExec(r); setCurrent(r.analysis || current);
+      const out = await api.execute(actionId);
+      const line = out.commit_status === "rolled_back"
+        ? "Verification failed, so I rolled it back. Nothing was changed."
+        : out.execution_status === "executed" ? "✓ Done." : "That didn't complete.";
+      setMsgs((m) => [...m, { id: "r-" + actionId, role: "assistant", content: line, kind: "result" }]);
     } catch (e: any) {
       const d = e?.body?.detail;
-      setError(typeof d === "string" ? d : d?.error ? d.error + (d.invariant ? " (" + d.invariant + ")" : "") : "execution refused");
+      setMsgs((m) => [...m, {
+        id: "e-" + actionId, role: "assistant", kind: "blocked",
+        content: "Action blocked. " + (d?.reason || d?.error || "The security policy prevented this."),
+      }]);
     }
-    await refresh(); setBusy(false);
   }
 
-  async function decide(id: number, ok: boolean) {
+  async function confirmAction(msg: Msg) {
+    if (!msg.confirmation || !msg.action_id) return;
     setBusy(true);
-    try { ok ? await api.approve(id) : await api.reject(id); }
-    catch (e: any) { setError(e?.body?.detail?.error || "not permitted"); }
-    await refresh(); setBusy(false);
+    try {
+      await api.confirm(msg.confirmation.id);
+      await run(msg.action_id);
+      setMsgs((m) => m.map((x) => (x.id === msg.id ? { ...x, done: true } : x)));
+    } catch (e: any) {
+      const d = e?.body?.detail;
+      setError(typeof d === "string" ? d : d?.error || "Confirmation was refused.");
+    }
+    setBusy(false);
   }
 
+  async function cancelAction(msg: Msg) {
+    if (!msg.confirmation) return;
+    try { await api.cancel(msg.confirmation.id); } catch { /* already resolved */ }
+    setMsgs((m) => m.map((x) => (x.id === msg.id ? { ...x, done: true } : x))
+      .concat({ id: "c-" + msg.id, role: "assistant", content: "Cancelled — nothing was changed." }));
+  }
+
+  // ------------------------------------------------------------------ sign in
   if (!me) {
     return (
-      <main className="flex min-h-screen items-center justify-center">
-        <div className="w-96 rounded border border-slate-800 bg-slate-950 p-6">
-          <h1 className="text-lg font-black tracking-tight text-cyan-300">AEGIS</h1>
-          <p className="mb-4 text-[11px] uppercase tracking-widest text-slate-500">
-            Security Control Center
-          </p>
-          {DEMO_USERS.map((d) => (
-            <button key={d.u} onClick={() => login(d.u, d.p)}
-              className="mb-2 w-full rounded border border-slate-700 px-3 py-2 text-left text-xs hover:border-cyan-500 hover:text-cyan-300">
-              sign in as <span className="font-bold">{d.u}</span>
-            </button>
-          ))}
-          {error && <div className="mt-2 text-xs text-rose-400">{error}</div>}
+      <main className="flex min-h-screen items-center justify-center px-4">
+        <div className="w-full max-w-sm">
+          <div className="mb-8 text-center">
+            <div className="text-3xl font-semibold tracking-tight text-slate-100">AEGIS</div>
+            <p className="mt-2 text-sm text-slate-500">Your AI assistant</p>
+          </div>
+          <button onClick={signInWithGoogle}
+            className="mb-3 flex w-full items-center justify-center gap-3 rounded-lg border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-medium text-slate-100 transition hover:border-slate-500">
+            <svg width="17" height="17" viewBox="0 0 48 48" aria-hidden="true">
+              <path fill="#4285F4" d="M45 24c0-1.6-.1-2.7-.4-3.9H24v7.1h12c-.2 1.9-1.5 4.7-4.4 6.6l6.7 5.2C42.2 35.5 45 30.3 45 24z" />
+              <path fill="#34A853" d="M24 46c5.9 0 10.9-2 14.5-5.3l-6.9-5.4c-1.9 1.3-4.4 2.2-7.6 2.2-5.8 0-10.7-3.8-12.5-9.1l-7.1 5.5C8.1 41 15.4 46 24 46z" />
+              <path fill="#FBBC05" d="M11.5 28.4c-.5-1.4-.8-2.9-.8-4.4s.3-3 .7-4.4l-7.1-5.5C2.8 17 2 20.4 2 24s.8 7 2.3 9.9l7.2-5.5z" />
+              <path fill="#EA4335" d="M24 10.7c4.1 0 6.9 1.8 8.5 3.3l6.2-6C34.9 4.5 29.9 2 24 2 15.4 2 8.1 7 4.3 14.1l7.2 5.5c1.8-5.3 6.7-8.9 12.5-8.9z" />
+            </svg>
+            Continue with Google
+          </button>
+          {!cfg.google && (
+            <p className="mb-5 text-center text-xs text-slate-600">
+              Google sign-in needs server credentials. Use a demo account below.
+            </p>
+          )}
+          {cfg.password && (
+            <div className="border-t border-slate-800 pt-5">
+              <p className="mb-3 text-center text-[11px] uppercase tracking-widest text-slate-600">
+                Demo accounts
+              </p>
+              {DEMO_ACCOUNTS.map((d) => (
+                <button key={d.u} onClick={() => signInWithPassword(d.u, d.p)}
+                  className="mb-2 w-full rounded-lg border border-slate-800 px-4 py-2.5 text-left text-sm text-slate-300 hover:border-slate-600">
+                  {d.label} <span className="text-slate-600">· {d.u}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {error && <div className="mt-4 rounded-lg bg-rose-500/10 p-3 text-xs text-rose-300">{error}</div>}
         </div>
       </main>
     );
   }
 
-  const pending = approvals.filter((a) => a.status === "pending");
-
+  // --------------------------------------------------------------- assistant
   return (
-    <main className="flex min-h-screen">
-      <aside className="w-52 shrink-0 border-r border-slate-800 bg-slate-950 p-4">
-        <div className="text-lg font-black tracking-tight text-cyan-300">AEGIS</div>
-        <div className="mb-6 text-[10px] uppercase tracking-widest text-slate-600">
-          Control Center
+    <main className="flex h-screen">
+      <aside className="hidden w-64 shrink-0 flex-col border-r border-slate-800 bg-slate-950 p-3 md:flex">
+        <div className="px-2 py-3 text-lg font-semibold tracking-tight text-slate-100">AEGIS</div>
+        <button onClick={newChat}
+          className="mb-4 rounded-lg border border-slate-700 px-3 py-2 text-left text-sm text-slate-200 hover:border-slate-500">
+          + New chat
+        </button>
+        <div className="flex-1 overflow-y-auto">
+          {convos.map((c) => (
+            <button key={c.id} onClick={() => openConversation(c.id)}
+              className={"mb-1 block w-full truncate rounded-lg px-3 py-2 text-left text-[13px] " +
+                (convoId === c.id ? "bg-slate-800 text-slate-100" : "text-slate-400 hover:bg-slate-900")}>
+              {c.title}
+            </button>
+          ))}
+          {convos.length === 0 && <p className="px-3 text-xs text-slate-600">No conversations yet.</p>}
         </div>
-        {NAV.map((n) => (
-          <button key={n} onClick={() => setView(n)}
-            className={"mb-1 block w-full rounded px-2 py-1.5 text-left text-xs " +
-              (view === n ? "bg-cyan-500/10 text-cyan-300" : "text-slate-400 hover:text-slate-200")}>
-            {n}{n === "Approvals" && pending.length > 0 ? " (" + pending.length + ")" : ""}
+        <div className="border-t border-slate-800 pt-3">
+          <div className="px-2 text-sm text-slate-300">{me.display_name || me.username}</div>
+          <div className="px-2 text-xs text-slate-600">{me.email || me.username}</div>
+          <button onClick={async () => { try { await api.logout(); } catch {} setToken(null); setMe(null); setMsgs([]); setConvos([]); }}
+            className="mt-2 w-full rounded-lg px-2 py-1.5 text-left text-xs text-slate-500 hover:text-slate-300">
+            Log out
           </button>
-        ))}
-        <div className="mt-6 border-t border-slate-800 pt-3 text-xs">
-          <Row k="user" v={me.username} />
-          <Row k="role" v={me.role} accent="text-cyan-300" />
-          <Row k="session" v={me.session_id.slice(0, 8)} />
         </div>
-        <button onClick={() => { setToken(null); setMe(null); }}
-          className="mt-3 w-full rounded border border-slate-800 px-2 py-1 text-[11px] text-slate-500 hover:text-slate-300">
-          sign out
-        </button>
-        <button onClick={async () => { await api.reset(); setCurrent(null); setExec(null); await refresh(); }}
-          className="mt-1 w-full rounded border border-slate-800 px-2 py-1 text-[11px] text-slate-500 hover:text-amber-300">
-          reset demo
-        </button>
       </aside>
 
-      <section className="flex-1 overflow-auto p-5">
-        <div className="mb-4 flex gap-2">
-          <input value={message} onChange={(e) => setMessage(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && send()}
-            className="flex-1 rounded border border-slate-800 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-cyan-600"
-            placeholder="Ask the agent to do something..." />
-          <button onClick={send} disabled={busy}
-            className="rounded border border-cyan-700 bg-cyan-500/10 px-4 text-xs font-bold text-cyan-300 disabled:opacity-40">
-            PROPOSE
-          </button>
-          <button onClick={run} disabled={busy || !actionId}
-            className="rounded border border-slate-700 px-4 text-xs font-bold text-slate-300 disabled:opacity-30">
-            EXECUTE
-          </button>
-        </div>
-
-        {error && <div className="mb-3 rounded border border-rose-800 bg-rose-500/10 p-2 text-xs text-rose-300">{error}</div>}
-
-        {view === "Overview" && (
-          <div className="space-y-4">
-            {board && (
-              <div className="grid grid-cols-3 gap-3 md:grid-cols-6">
-                {Object.entries(board.totals).map(([k, v]: any) => (
-                  <div key={k} className="rounded border border-slate-800 bg-slate-950/60 p-3">
-                    <div className="text-2xl font-black text-slate-100">{v}</div>
-                    <div className="text-[10px] uppercase tracking-wider text-slate-500">{k.replace(/_/g, " ")}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-            <Analysis a={current} />
-            {exec && (
-              <div className="grid gap-3 md:grid-cols-4">
-                <Card title="Execution" tone={exec.execution_status === "executed" ? "LOW" : "CRITICAL"}>
-                  <Row k="status" v={exec.execution_status} />
-                  <Row k="snapshot" v={exec.snapshot_id ?? "none"} />
-                </Card>
-                <Card title="Verification" tone={exec.verification?.status === "VERIFIED" ? "LOW" : "CRITICAL"}>
-                  <Row k="status" v={exec.verification?.status} />
-                  {exec.verification?.problems?.map((p: string, i: number) => (
-                    <div key={i} className="text-rose-300">• {p}</div>
+      <section className="flex flex-1 flex-col">
+        <div className="flex-1 overflow-y-auto px-4 py-8">
+          <div className="mx-auto max-w-2xl space-y-5">
+            {msgs.length === 0 && (
+              <div className="pt-16 text-center">
+                <h1 className="text-2xl font-semibold text-slate-200">How can I help?</h1>
+                <div className="mx-auto mt-6 grid max-w-md gap-2">
+                  {["Create a project called Megathon", "Show me my projects",
+                    "Delete the project Portfolio"].map((s) => (
+                    <button key={s} onClick={() => setInput(s)}
+                      className="rounded-lg border border-slate-800 px-4 py-2.5 text-left text-sm text-slate-400 hover:border-slate-600 hover:text-slate-200">
+                      {s}
+                    </button>
                   ))}
-                </Card>
-                <Card title="Commit / Rollback" tone={exec.commit_status === "committed" ? "LOW" : "HIGH"}>
-                  <Row k="commit" v={exec.commit_status} />
-                  <Row k="rollback" v={exec.rollback_status} />
-                </Card>
-                <Card title="Tool Result">
-                  <pre className="overflow-auto text-[10px] text-slate-400">
-                    {JSON.stringify(exec.tool_result, null, 1)}
-                  </pre>
-                </Card>
+                </div>
               </div>
             )}
-          </div>
-        )}
 
-        {view === "Live Actions" && (
-          <div className="rounded border border-slate-800">
-            <table className="w-full text-xs">
-              <thead className="bg-slate-900/60 text-[10px] uppercase tracking-wider text-slate-500">
-                <tr>{["id", "user", "action", "resource", "intent", "blast", "rev", "traj", "decision", "exec"].map((h) => (
-                  <th key={h} className="px-2 py-2 text-left">{h}</th>))}</tr>
-              </thead>
-              <tbody>
-                {actions.map((a) => (
-                  <tr key={a.id} className="border-t border-slate-900 hover:bg-slate-900/40">
-                    <td className="px-2 py-1.5 text-slate-500">{a.id}</td>
-                    <td className="px-2 py-1.5">{a.user}</td>
-                    <td className="px-2 py-1.5 text-cyan-300">{a.action}</td>
-                    <td className="px-2 py-1.5">{a.resource}</td>
-                    <td className="px-2 py-1.5 text-slate-400">{a.intent}</td>
-                    <td className="px-2 py-1.5">{a.blast_radius}</td>
-                    <td className="px-2 py-1.5">{a.reversibility}</td>
-                    <td className="px-2 py-1.5">{a.trajectory}</td>
-                    <td className="px-2 py-1.5">
-                      <span className={"rounded border px-1.5 py-0.5 " + (DECISION_STYLE[a.decision] || "")}>{a.decision}</span>
-                    </td>
-                    <td className="px-2 py-1.5 text-slate-500">{a.execution_status}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {view === "Trajectory" && board && (
-          <div className="grid gap-3 md:grid-cols-2">
-            <Card title="Your behaviour score" tone={current?.trajectory?.level}>
-              <Row k="user" v={board.trajectory.user} />
-              <Row k="score" v={board.trajectory.score + " / 20"} />
-              {current?.trajectory?.signals?.map((s: string, i: number) => (
-                <div key={i} className="text-slate-400">• {s}</div>
-              ))}
-            </Card>
-            <Card title="Resources">
-              {board.resources.map((r: any) => (
-                <Row key={r.name} k={r.name}
-                  v={[r.production ? "production" : "", r.sensitive ? "sensitive" : "",
-                      r.disposable ? "disposable" : "", r.criticality].filter(Boolean).join(" · ")}
-                  accent={r.production ? "text-rose-300" : ""} />
-              ))}
-            </Card>
-          </div>
-        )}
-
-        {view === "Approvals" && (
-          <div className="space-y-2">
-            {approvals.length === 0 && <div className="text-xs text-slate-600">No approval requests.</div>}
-            {approvals.map((a) => (
-              <div key={a.id} className="flex items-center justify-between rounded border border-slate-800 bg-slate-950/60 p-3 text-xs">
-                <div>
-                  <div className="font-bold text-slate-200">#{a.id} · {a.action_name} → {a.resource}</div>
-                  <div className="text-slate-500">
-                    by {a.requested_by} · {a.required_level} · blast {a.blast_radius} · {a.reversibility}
-                    {a.consumed ? " · consumed" : ""}
+            {msgs.map((m) => (
+              <div key={m.id}>
+                {m.role === "user" ? (
+                  <div className="flex justify-end">
+                    <div className="max-w-[80%] rounded-2xl bg-slate-800 px-4 py-2.5 text-sm text-slate-100">
+                      {m.content}
+                    </div>
                   </div>
-                  {!a.you_may_decide && <div className="text-amber-400">{a.decide_note}</div>}
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-slate-400">{a.status}</span>
-                  {a.status === "pending" && a.you_may_decide && (
-                    <>
-                      <button onClick={() => decide(a.id, true)}
-                        className="rounded border border-emerald-700 px-2 py-1 text-emerald-300">approve</button>
-                      <button onClick={() => decide(a.id, false)}
-                        className="rounded border border-rose-800 px-2 py-1 text-rose-300">reject</button>
-                    </>
-                  )}
-                </div>
+                ) : m.kind === "blocked" ? (
+                  <div className="rounded-xl border border-rose-900/60 bg-rose-500/5 p-4">
+                    <div className="mb-1 text-sm font-semibold text-rose-300">Action blocked</div>
+                    <p className="text-sm text-slate-300">{m.content.replace(/^Action blocked\.\s*/, "")}</p>
+                    <p className="mt-2 text-xs text-slate-600">AEGIS made this decision automatically.</p>
+                  </div>
+                ) : m.kind === "confirm" && !m.done ? (
+                  <div className="rounded-xl border border-amber-900/60 bg-amber-500/5 p-4">
+                    <div className="mb-1 text-sm font-semibold text-amber-300">Confirmation required</div>
+                    <p className="text-sm text-slate-300">{m.content}</p>
+                    {m.proposal && (
+                      <p className="mt-2 text-xs text-slate-500">
+                        Action: <span className="text-slate-300">{m.proposal.action}</span>
+                        {m.proposal.parameters?.name ? " · " + m.proposal.parameters.name : ""}
+                      </p>
+                    )}
+                    <div className="mt-3 flex gap-2">
+                      <button onClick={() => confirmAction(m)} disabled={busy}
+                        className="rounded-lg bg-amber-500/20 px-4 py-1.5 text-xs font-semibold text-amber-200 hover:bg-amber-500/30 disabled:opacity-40">
+                        Confirm
+                      </button>
+                      <button onClick={() => cancelAction(m)}
+                        className="rounded-lg border border-slate-700 px-4 py-1.5 text-xs text-slate-400 hover:text-slate-200">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm leading-relaxed text-slate-200">{m.content}</p>
+                )}
               </div>
             ))}
+            {busy && <p className="text-sm text-slate-600">Thinking…</p>}
+            {error && <p className="text-sm text-rose-400">{error}</p>}
+            <div ref={bottom} />
           </div>
-        )}
+        </div>
 
-        {view === "Audit" && (
-          <div className="space-y-3">
-            {chain && (
-              <div className={"rounded border p-3 text-xs " + (chain.valid
-                ? "border-emerald-700 bg-emerald-500/10 text-emerald-300"
-                : "border-rose-700 bg-rose-500/10 text-rose-300")}>
-                chain {chain.valid ? "INTACT" : "TAMPERED"} · {chain.length} events
-                {chain.broken_at ? " · broken at #" + chain.broken_at + " (" + chain.reason + ")" : ""}
-              </div>
-            )}
-            <div className="rounded border border-slate-800">
-              <table className="w-full text-[11px]">
-                <thead className="bg-slate-900/60 text-[10px] uppercase tracking-wider text-slate-500">
-                  <tr>{["id", "event", "user", "action", "decision", "prev", "hash"].map((h) => (
-                    <th key={h} className="px-2 py-2 text-left">{h}</th>))}</tr>
-                </thead>
-                <tbody>
-                  {audit.map((e) => (
-                    <tr key={e.id} className="border-t border-slate-900">
-                      <td className="px-2 py-1 text-slate-500">{e.id}</td>
-                      <td className="px-2 py-1 text-cyan-300">{e.event_type}</td>
-                      <td className="px-2 py-1">{e.user}</td>
-                      <td className="px-2 py-1 text-slate-400">{e.action} {e.resource}</td>
-                      <td className="px-2 py-1">{e.decision}</td>
-                      <td className="px-2 py-1 text-slate-600">{e.previous_hash?.slice(0, 10)}</td>
-                      <td className="px-2 py-1 text-slate-400">{e.current_hash?.slice(0, 10)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+        <div className="border-t border-slate-800 px-4 py-4">
+          <div className="mx-auto flex max-w-2xl gap-2">
+            <input value={input} onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && send()}
+              disabled={busy} placeholder="Message AEGIS…"
+              className="flex-1 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-slate-500 disabled:opacity-50" />
+            <button onClick={send} disabled={busy || !input.trim()}
+              className="rounded-xl bg-slate-100 px-5 text-sm font-semibold text-slate-900 disabled:opacity-30">
+              Send
+            </button>
           </div>
-        )}
+        </div>
       </section>
     </main>
   );

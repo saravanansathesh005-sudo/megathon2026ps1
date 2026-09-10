@@ -16,6 +16,9 @@ from app.services import audit
 
 VERIFIED, VERIFICATION_FAILED, NOT_VERIFIED = "VERIFIED", "VERIFICATION_FAILED", "not_verified"
 
+# Actions whose post-execution row count is exactly predictable.
+BULK_DELETE_ACTIONS = {"delete_records"}
+
 
 def _resource_counts(db: Session) -> dict[str, int]:
     rows = db.execute(
@@ -66,6 +69,10 @@ def expected_outcome(db: Session, action: Action, before: dict[str, int]) -> dic
     if op == OP_DROP:
         return {"target_count": 0, "mutates": True}
     if op == OP_DELETE:
+        # Only the bulk actions take a filter; an item delete removes a named row and
+        # leaves the rest, so its exact post-count is not predictable here.
+        if name not in BULK_DELETE_ACTIONS:
+            return {"target_count": None, "mutates": True}
         filt = params.get("filter", "all")
         if filt in ("all", "*", None):
             return {"target_count": 0, "mutates": True}

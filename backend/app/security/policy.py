@@ -1,86 +1,149 @@
 """Deterministic policy engine - the central security authority.
 
-Pure function. Same inputs, same decision, every time. No ML on this path.
+Pure function. Same inputs, same decision, every time. No ML on this path, and no
+human in it: AEGIS resolves every action automatically to exactly one of three
+verdicts. There is no administrator approval state.
+
+Priority, highest first:
+    unknown action            -> BLOCK
+    hard invariant failure    -> BLOCK
+    authorization failure     -> BLOCK
+    out of scope              -> BLOCK
+    forbidden T&C band        -> BLOCK
+    privileged / destructive  -> evaluated on full context
+    action risk band          -> ALLOW / REQUIRE_CONFIRMATION / BLOCK
+    trajectory                -> may restrict further, never relax
 """
 
 from __future__ import annotations
 
+from app.security.registry import FORBIDDEN, NORMAL, PRIVILEGED, RISKY
+
 ALLOW = "ALLOW"
 REQUIRE_CONFIRMATION = "REQUIRE_CONFIRMATION"
-REQUIRE_ADMIN_APPROVAL = "REQUIRE_ADMIN_APPROVAL"
 BLOCK = "BLOCK"
 
-RANK = {ALLOW: 0, REQUIRE_CONFIRMATION: 1, REQUIRE_ADMIN_APPROVAL: 2, BLOCK: 3}
+DECISIONS = (ALLOW, REQUIRE_CONFIRMATION, BLOCK)
+RANK = {ALLOW: 0, REQUIRE_CONFIRMATION: 1, BLOCK: 2}
+_BY_RANK = {0: ALLOW, 1: REQUIRE_CONFIRMATION, 2: BLOCK}
+
+# A privileged action whose measured impact reaches this is refused outright.
+PRIVILEGED_BLOCK_BLAST = 8.5
+# Any action this large is refused regardless of band.
+ABSOLUTE_BLOCK_BLAST = 9.5
+# Below this an ordinary action needs no confirmation.
+CONFIRM_BLAST = 4.5
 
 
-def escalate(decision: str) -> str:
-    if decision == ALLOW:
-        return REQUIRE_CONFIRMATION
-    if decision == REQUIRE_CONFIRMATION:
-        return REQUIRE_ADMIN_APPROVAL
-    return decision
+def escalate(decision: str, steps: int = 1, cap: str = BLOCK) -> str:
+    """Raise restriction by `steps`, never past `cap`, never downwards."""
+    target = min(RANK[decision] + max(0, steps), RANK[cap])
+    return _BY_RANK[max(target, RANK[decision])]
+
+
+def _trajectory_steps(score: int, category: str) -> int:
+    if score >= 16:
+        return 2
+    if score >= 12:
+        return 2 if category in (RISKY, PRIVILEGED) else 1
+    if score >= 8:
+        return 1
+    return 0
 
 
 def decide(*, authorization: dict, intent: dict, blast: dict, reversibility: dict,
            trajectory: dict, invariants: dict, resource: dict,
-           approval_present: bool = False) -> dict:
+           terms: dict | None = None, injection: dict | None = None,
+           approval_present: bool = False, confirmation_present: bool = False) -> dict:
     """Return the single authoritative decision plus the reasons behind it."""
     reasons: list[str] = []
+    category = (terms or {}).get("category", NORMAL)
 
-    # --- Hard blocks. INV-004 is satisfied by requiring approval, not by blocking.
+    # ------------------------------------------------------------------ hard blocks
+    # INV-004 is satisfied by obtaining confirmation, not by refusing outright.
     hard = [v for v in invariants["violations"] if v["code"] != "INV-004"]
     if hard:
         for item in hard:
             reasons.append("safety invariant " + item["code"] + " failed: " + item["detail"])
-        return {"decision": BLOCK, "reasons": reasons, "escalated_by": []}
+        return _verdict(BLOCK, reasons, [], category)
 
     if not authorization["authorized"]:
         reasons.append("authorization denied: " + authorization["reason"])
-        return {"decision": BLOCK, "reasons": reasons, "escalated_by": []}
+        return _verdict(BLOCK, reasons, [], category)
 
     if intent["status"] == "OUT_OF_SCOPE":
         reasons.append("intent out of scope: " + intent["reason"])
-        return {"decision": BLOCK, "reasons": reasons, "escalated_by": []}
+        return _verdict(BLOCK, reasons, [], category)
 
-    if trajectory["score"] >= 16:
-        reasons.append("trajectory " + str(trajectory["score"]) + "/20 ("
-                       + trajectory["level"] + ") - behaviour rejected")
-        return {"decision": BLOCK, "reasons": reasons, "escalated_by": []}
+    if category == FORBIDDEN:
+        for r in (terms or {}).get("reasons", []):
+            reasons.append("terms & conditions: " + r)
+        if injection and injection.get("detected"):
+            for signal in injection["signals"]:
+                reasons.append("security-bypass attempt: " + signal)
+        return _verdict(BLOCK, reasons, [], category)
 
-    # --- Graded decision
-    decision = ALLOW
-    level = reversibility["level"]
     score = blast["score"]
+    level = reversibility["level"]
 
-    if level == "R3" and resource.get("is_production"):
-        decision = REQUIRE_ADMIN_APPROVAL
-        reasons.append(level + " irreversible action on a production resource")
-    elif score >= 7.5:
-        decision = REQUIRE_ADMIN_APPROVAL
-        reasons.append("blast radius " + str(score) + "/10 (" + blast["severity"] + ")")
-    elif level == "R3":
+    if score >= ABSOLUTE_BLOCK_BLAST:
+        reasons.append("blast radius " + str(score) + "/10 exceeds the maximum permitted impact")
+        return _verdict(BLOCK, reasons, [], category)
+
+    # -------------------------------------------------------------- graded decision
+    decision = ALLOW
+
+    if category == PRIVILEGED:
+        if score >= PRIVILEGED_BLOCK_BLAST:
+            decision = BLOCK
+            reasons.append("privileged action with blast radius " + str(score) + "/10 ("
+                           + blast["severity"] + ")")
+        else:
+            decision = REQUIRE_CONFIRMATION
+            reasons.append("privileged or destructive action requires explicit confirmation")
+            if level in ("R2", "R3"):
+                reasons.append(level + " reversibility")
+    elif category == RISKY:
         decision = REQUIRE_CONFIRMATION
-        reasons.append(level + " irreversible action")
-    elif score >= 4.5 or level == "R2" or intent["status"] == "SCOPE_EXPANSION":
-        decision = REQUIRE_CONFIRMATION
-        if score >= 4.5:
+        reasons.append("risky action with meaningful consequences")
+        if score >= CONFIRM_BLAST:
             reasons.append("blast radius " + str(score) + "/10 (" + blast["severity"] + ")")
-        if level == "R2":
-            reasons.append(level + " action requires a restorable snapshot")
-        if intent["status"] == "SCOPE_EXPANSION":
-            reasons.append("intent scope expansion: " + intent["reason"])
+    else:  # NORMAL
+        if score >= CONFIRM_BLAST or level in ("R2", "R3") \
+                or intent["status"] == "SCOPE_EXPANSION":
+            decision = REQUIRE_CONFIRMATION
+            if score >= CONFIRM_BLAST:
+                reasons.append("blast radius " + str(score) + "/10 (" + blast["severity"] + ")")
+            if level in ("R2", "R3"):
+                reasons.append(level + " action requires a restorable snapshot")
+            if intent["status"] == "SCOPE_EXPANSION":
+                reasons.append("intent scope expansion: " + intent["reason"])
 
+    # ------------------------------------------------------- trajectory: restrict only
     escalated_by: list[str] = []
-    traj = trajectory["score"]
-    if traj >= 12:
-        decision = escalate(escalate(decision))
-        escalated_by.append("trajectory " + str(traj) + "/20 (" + trajectory["level"] + ")")
-    elif traj >= 8:
-        decision = escalate(decision)
-        escalated_by.append("trajectory " + str(traj) + "/20 (" + trajectory["level"] + ")")
+    steps = _trajectory_steps(trajectory["score"], category)
+    if steps:
+        # Routine permitted work is never refused on behaviour alone; it is slowed down.
+        cap = REQUIRE_CONFIRMATION if category == NORMAL else BLOCK
+        raised = escalate(decision, steps, cap)
+        if raised != decision:
+            escalated_by.append("trajectory " + str(trajectory["score"]) + "/20 ("
+                                + trajectory["level"] + ")")
+            decision = raised
 
     if decision == ALLOW and not reasons:
-        reasons.append("within scope, low impact (blast radius " + str(score) + "/10)")
+        reasons.append("permitted work, within scope, low impact (blast radius "
+                       + str(score) + "/10)")
     reasons.extend(escalated_by)
+    return _verdict(decision, reasons, escalated_by, category)
 
-    return {"decision": decision, "reasons": reasons, "escalated_by": escalated_by}
+
+def _verdict(decision: str, reasons: list[str], escalated_by: list[str],
+             category: str) -> dict:
+    return {
+        "decision": decision,
+        "reasons": reasons,
+        "escalated_by": escalated_by,
+        "terms_category": category,
+        "requires_human_approval": False,
+    }

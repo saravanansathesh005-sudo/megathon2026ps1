@@ -70,7 +70,7 @@ def test_scenario_2_admin_test_table_full_lifecycle(client, admin):
     assert a["policy_decision"]["decision"] == "REQUIRE_CONFIRMATION"
 
     approval_id = a["approval"]["id"]
-    granted = client.post("/api/approvals/" + str(approval_id) + "/approve",
+    granted = client.post("/api/confirmations/" + str(approval_id) + "/confirm",
                           headers=auth(admin))
     assert granted.status_code == 200
 
@@ -86,7 +86,7 @@ def test_scenario_2_admin_test_table_full_lifecycle(client, admin):
 
     audit_events = client.get("/api/audit", headers=auth(admin)).json()["events"]
     kinds = [e["event_type"] for e in audit_events]
-    for expected in ("action.analyzed", "approval.requested", "approval.granted",
+    for expected in ("action.analyzed", "confirmation.requested", "confirmation.given",
                      "snapshot.created", "execution.committed"):
         assert expected in kinds, expected
 
@@ -169,7 +169,7 @@ def test_complete_flow_commit_path(client, admin):
                               "safety_invariants", "policy_decision"))
     stages["policy"] = analysis["policy_decision"]["decision"] == "REQUIRE_CONFIRMATION"
 
-    client.post("/api/approvals/" + str(analysis["approval"]["id"]) + "/approve",
+    client.post("/api/confirmations/" + str(analysis["approval"]["id"]) + "/confirm",
                 headers=auth(admin))
     stages["approved"] = True
 
@@ -194,7 +194,7 @@ def test_complete_flow_rollback_path(client, admin):
                                  "parameters": {"filter": "all",
                                                 "_demo_force_verify_fail": True}},
                            headers=auth(admin)).json()
-    client.post("/api/approvals/" + str(proposal["analysis"]["approval"]["id"]) + "/approve",
+    client.post("/api/confirmations/" + str(proposal["analysis"]["approval"]["id"]) + "/confirm",
                 headers=auth(admin))
     run = client.post("/api/actions/execute", json={"action_id": proposal["action_id"]},
                       headers=auth(admin)).json()
@@ -218,7 +218,7 @@ def test_dashboard_reflects_the_whole_demo(client, admin, viewer):
     client.post("/api/chat", json={"message": "Delete all users"}, headers=auth(viewer))
     proposal = client.post("/api/chat", json={"message": "Clean the disposable test table"},
                            headers=auth(admin)).json()
-    client.post("/api/approvals/" + str(proposal["analysis"]["approval"]["id"]) + "/approve",
+    client.post("/api/confirmations/" + str(proposal["analysis"]["approval"]["id"]) + "/confirm",
                 headers=auth(admin))
     client.post("/api/actions/execute", json={"action_id": proposal["action_id"]},
                 headers=auth(admin))

@@ -163,6 +163,11 @@ def test_inv004_satisfied_with_approval():
 
 # ------------------------------------------------------------------ policy engine
 
+def _terms(category="NORMAL"):
+    return {"category": category, "meaning": "", "reasons": [],
+            "base_category": category, "escalated": False}
+
+
 def _ctx(**over):
     base = dict(
         authorization={"authorized": True, "reason": "ok"},
@@ -172,6 +177,8 @@ def _ctx(**over):
         trajectory={"score": 0, "level": "NORMAL", "signals": []},
         invariants={"violations": [], "passed": True},
         resource=TEST_TABLE,
+        terms=_terms(),
+        injection={"detected": False, "signals": [], "count": 0},
     )
     base.update(over)
     return base
@@ -199,16 +206,49 @@ def test_policy_blocks_on_invariant():
     assert any("INV-003" in r for r in result["reasons"])
 
 
-def test_policy_requires_admin_for_r3_production():
+def test_policy_privileged_production_requires_confirmation():
+    """A privileged production action is never silently allowed."""
     result = policy.decide(**_ctx(
+        terms=_terms("PRIVILEGED"),
+        blast={"score": 7.1, "severity": "HIGH", "reasons": []},
         reversibility={"level": "R3", "rollback_supported": True, "explanation": ""},
         resource=PROD_CRITICAL))
-    assert result["decision"] == policy.REQUIRE_ADMIN_APPROVAL
+    assert result["decision"] == policy.REQUIRE_CONFIRMATION
 
 
-def test_policy_requires_admin_for_high_blast():
-    result = policy.decide(**_ctx(blast={"score": 8.2, "severity": "CRITICAL", "reasons": []}))
-    assert result["decision"] == policy.REQUIRE_ADMIN_APPROVAL
+def test_policy_blocks_privileged_action_with_very_high_blast():
+    result = policy.decide(**_ctx(
+        terms=_terms("PRIVILEGED"),
+        blast={"score": 8.7, "severity": "CRITICAL", "reasons": []},
+        reversibility={"level": "R3", "rollback_supported": True, "explanation": ""},
+        resource=PROD_CRITICAL))
+    assert result["decision"] == policy.BLOCK
+
+
+def test_policy_blocks_at_absolute_blast_ceiling():
+    result = policy.decide(**_ctx(blast={"score": 9.8, "severity": "CRITICAL", "reasons": []}))
+    assert result["decision"] == policy.BLOCK
+
+
+def test_policy_forbidden_band_is_blocked():
+    result = policy.decide(**_ctx(terms=_terms("FORBIDDEN")))
+    assert result["decision"] == policy.BLOCK
+
+
+def test_policy_risky_band_requires_confirmation():
+    result = policy.decide(**_ctx(terms=_terms("RISKY")))
+    assert result["decision"] == policy.REQUIRE_CONFIRMATION
+
+
+def test_policy_never_returns_admin_approval():
+    """The decision set is exactly three values; no human approval state exists."""
+    for category in ("NORMAL", "RISKY", "PRIVILEGED", "FORBIDDEN"):
+        for score in (0, 9, 13, 19):
+            out = policy.decide(**_ctx(
+                terms=_terms(category),
+                trajectory={"score": score, "level": "X", "signals": []}))
+            assert out["decision"] in policy.DECISIONS
+            assert out["requires_human_approval"] is False
 
 
 def test_policy_requires_confirmation_for_r2():
@@ -225,14 +265,44 @@ def test_policy_trajectory_escalates_one_level():
     assert hot["escalated_by"]
 
 
-def test_policy_trajectory_critical_escalates_two_levels():
-    result = policy.decide(**_ctx(trajectory={"score": 13, "level": "CRITICAL", "signals": []}))
-    assert result["decision"] == policy.REQUIRE_ADMIN_APPROVAL
-
-
-def test_policy_trajectory_extreme_blocks():
-    result = policy.decide(**_ctx(trajectory={"score": 18, "level": "EXTREME", "signals": []}))
+def test_policy_trajectory_critical_escalates_risky_to_block():
+    result = policy.decide(**_ctx(
+        terms=_terms("RISKY"),
+        trajectory={"score": 13, "level": "CRITICAL", "signals": []}))
     assert result["decision"] == policy.BLOCK
+
+
+def test_policy_trajectory_extreme_blocks_risky_work():
+    result = policy.decide(**_ctx(
+        terms=_terms("RISKY"),
+        trajectory={"score": 18, "level": "EXTREME", "signals": []}))
+    assert result["decision"] == policy.BLOCK
+
+
+def test_policy_trajectory_never_blocks_routine_permitted_work():
+    """Trajectory is behavioural risk, not permission: a safe read is slowed, not refused."""
+    result = policy.decide(**_ctx(
+        terms=_terms("NORMAL"),
+        trajectory={"score": 20, "level": "EXTREME", "signals": []}))
+    assert result["decision"] == policy.REQUIRE_CONFIRMATION
+
+
+def test_policy_trajectory_only_restricts():
+    """Escalation can never relax a decision."""
+    for category in ("NORMAL", "RISKY", "PRIVILEGED"):
+        calm = policy.decide(**_ctx(terms=_terms(category)))
+        for score in (8, 12, 16, 20):
+            hot = policy.decide(**_ctx(
+                terms=_terms(category),
+                trajectory={"score": score, "level": "X", "signals": []}))
+            assert policy.RANK[hot["decision"]] >= policy.RANK[calm["decision"]]
+
+
+def test_policy_trajectory_cannot_unblock():
+    blocked = policy.decide(**_ctx(
+        authorization={"authorized": False, "reason": "denied"},
+        trajectory={"score": 0, "level": "NORMAL", "signals": []}))
+    assert blocked["decision"] == policy.BLOCK
 
 
 def test_policy_is_pure():

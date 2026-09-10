@@ -109,7 +109,128 @@ def drop_table(db: Session, resource_name: str, params: dict) -> dict:
             "remaining": _count(db, resource)}
 
 
+# ----------------------------------------------------------- workspace domain tools
+# These operate on the same Record store, scoped by owner_user_id, so blast radius,
+# snapshots, verification and rollback all work unchanged.
+
+def _owned(db: Session, resource: Resource, owner: int | None):
+    q = select(Record).where(Record.resource_id == resource.id)
+    if owner is not None:
+        q = q.where((Record.owner_user_id == owner) | (Record.owner_user_id.is_(None)))
+    return db.scalars(q).all()
+
+
+def _create_item(db: Session, resource_name: str, params: dict, label: str) -> dict:
+    resource = _resource(db, resource_name)
+    owner = params.get("_owner_user_id")
+    name = params.get("name") or params.get("title") or ("untitled " + label)
+    rows = _owned(db, resource, owner)
+    new_id = str(max([int(r.payload.get("id", 0)) for r in rows] or [0]) + 1)
+    db.add(Record(resource_id=resource.id, owner_user_id=owner,
+                  payload={"id": new_id, "name": name, "value": name}))
+    db.flush()
+    return {"resource": resource_name, "created": 1, "id": new_id, "name": name,
+            "total": _count(db, resource)}
+
+
+def _delete_item(db: Session, resource_name: str, params: dict, label: str) -> dict:
+    resource = _resource(db, resource_name)
+    owner = params.get("_owner_user_id")
+    target = params.get("name") or params.get("id")
+    if target is None:
+        # Deleting "one" item requires knowing which one. Never fall back to all.
+        raise ToolError("no " + label + " named; refusing to delete without a target")
+    deleted = 0
+    for row in _owned(db, resource, owner):
+        if target is None or str(row.payload.get("name")) == str(target)                 or str(row.payload.get("id")) == str(target):
+            db.delete(row)
+            deleted += 1
+            if target is not None:
+                break
+    db.flush()
+    return {"resource": resource_name, "deleted": deleted, "target": target,
+            "remaining": len(_owned(db, resource, owner))}
+
+
+def create_project(db, r, p): return _create_item(db, "projects", p, "project")
+def create_task(db, r, p): return _create_item(db, "tasks", p, "task")
+def create_file(db, r, p): return _create_item(db, "files", p, "file")
+def delete_project(db, r, p): return _delete_item(db, "projects", p, "project")
+def delete_task(db, r, p): return _delete_item(db, "tasks", p, "task")
+def delete_file(db, r, p): return _delete_item(db, "files", p, "file")
+
+
+def _list_items(db: Session, resource_name: str, params: dict) -> dict:
+    resource = _resource(db, resource_name)
+    rows = _owned(db, resource, params.get("_owner_user_id"))
+    return {"resource": resource_name, "items": [r.payload for r in rows],
+            "count": len(rows)}
+
+
+def list_projects(db, r, p): return _list_items(db, "projects", p)
+def list_tasks(db, r, p): return _list_items(db, "tasks", p)
+def list_files(db, r, p): return _list_items(db, "files", p)
+def read_project(db, r, p): return _list_items(db, "projects", p)
+def read_file(db, r, p): return _list_items(db, "files", p)
+
+
+def _update_item(db: Session, resource_name: str, params: dict) -> dict:
+    resource = _resource(db, resource_name)
+    target = params.get("name") or params.get("id")
+    changes = params.get("changes") or {}
+    updated = 0
+    for row in _owned(db, resource, params.get("_owner_user_id")):
+        if target is None or str(row.payload.get("name")) == str(target)                 or str(row.payload.get("id")) == str(target):
+            merged = dict(row.payload)
+            merged.update(changes)
+            row.payload = merged
+            updated += 1
+    db.flush()
+    return {"resource": resource_name, "updated": updated}
+
+
+def update_project(db, r, p): return _update_item(db, "projects", p)
+def update_task(db, r, p): return _update_item(db, "tasks", p)
+
+
+def calculate(db: Session, resource_name: str, params: dict) -> dict:
+    return {"expression": params.get("expression", ""), "note": "evaluated by the agent"}
+
+
+def move_files(db: Session, resource_name: str, params: dict) -> dict:
+    return _update_item(db, "files", {**params, "changes": {"folder": params.get("to", "/")}})
+
+
+def bulk_update(db: Session, resource_name: str, params: dict) -> dict:
+    return _update_item(db, resource_name or "projects", {**params, "name": None})
+
+
+def update_config(db: Session, resource_name: str, params: dict) -> dict:
+    return {"config_updated": True, "keys": sorted((params.get("changes") or {}).keys())}
+
+
+def delete_all_projects(db: Session, resource_name: str, params: dict) -> dict:
+    resource = _resource(db, "projects")
+    rows = _owned(db, resource, params.get("_owner_user_id"))
+    for row in rows:
+        db.delete(row)
+    db.flush()
+    return {"resource": "projects", "deleted": len(rows), "remaining": _count(db, resource)}
+
+
+def export_sensitive(db: Session, resource_name: str, params: dict) -> dict:
+    raise ToolError("export_sensitive has no executable implementation by design")
+
+
 TOOLS = {
+    "create_project": create_project, "read_project": read_project,
+    "list_projects": list_projects, "update_project": update_project,
+    "create_task": create_task, "list_tasks": list_tasks, "update_task": update_task,
+    "create_file": create_file, "read_file": read_file, "list_files": list_files,
+    "calculate": calculate,
+    "delete_project": delete_project, "delete_task": delete_task, "delete_file": delete_file,
+    "move_files": move_files, "bulk_update": bulk_update, "update_config": update_config,
+    "delete_all_projects": delete_all_projects,
     "list_tables": list_tables,
     "read_table": read_table,
     "insert_record": insert_record,

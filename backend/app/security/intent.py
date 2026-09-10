@@ -31,7 +31,10 @@ RESOURCE_ALIASES = {
     "test_table": ["test", "test table", "test_table", "test data", "testing", "disposable", "scratch"],
     "audit_demo": ["audit", "audit_demo", "audit demo"],
     "mock_email": ["email", "emails", "mail", "mock_email"],
-    "mock_files": ["file", "files", "mock_files", "document", "documents"],
+    "mock_files": ["mock_files"],
+    "projects": ["project", "projects"],
+    "tasks": ["task", "tasks", "todo", "to-do"],
+    "files": ["file", "files", "document", "documents", "note", "notes"],
 }
 
 

@@ -10,8 +10,9 @@ from sqlalchemy.orm import Session
 
 from app.models import Record, Resource
 from app.security import (
-    authorization, blast_radius, consequences, dependencies, intent as intent_mod,
-    invariants as invariants_mod, policy, reversibility, trajectory,
+    authorization, blast_radius, consequences, dependencies, injection as injection_mod,
+    intent as intent_mod, invariants as invariants_mod, policy, reversibility, terms as terms_mod,
+    trajectory,
 )
 from app.security.identity import Identity
 from app.security.registry import ACTIONS, OP_DELETE, OP_DROP, OP_EXPORT, is_known
@@ -37,13 +38,22 @@ def resource_dict(resource: Resource | None, name: str) -> dict:
     }
 
 
+def _owner_filter(query, resource: Resource, owner_user_id: int | None):
+    """Restrict to rows this principal may reach. Shared resources have no owner."""
+    if owner_user_id is None:
+        return query
+    return query.where(
+        (Record.owner_user_id == owner_user_id) | (Record.owner_user_id.is_(None)))
+
+
 def _record_counts(db: Session, resource: Resource | None, action_name: str,
-                   parameters: dict) -> tuple[int, int]:
+                   parameters: dict, owner_user_id: int | None = None) -> tuple[int, int]:
     """Measure the real target set. Never guess from the action category."""
     if resource is None:
         return 0, 0
-    total = db.scalar(
-        select(func.count(Record.id)).where(Record.resource_id == resource.id)) or 0
+    total = db.scalar(_owner_filter(
+        select(func.count(Record.id)).where(Record.resource_id == resource.id),
+        resource, owner_user_id)) or 0
 
     if not is_known(action_name):
         return 0, total
@@ -55,7 +65,9 @@ def _record_counts(db: Session, resource: Resource | None, action_name: str,
         filt = parameters.get("filter", "all")
         if filt in ("all", "*", None):
             return total, total
-        rows = db.scalars(select(Record).where(Record.resource_id == resource.id)).all()
+        rows = db.scalars(_owner_filter(
+            select(Record).where(Record.resource_id == resource.id),
+            resource, owner_user_id)).all()
         matched = sum(1 for r in rows if _matches(r.payload, filt))
         return matched, total
     if op == "write":
@@ -79,16 +91,20 @@ def analyse(db: Session, identity: Identity, user_request: str, action_name: str
     auth = authorization.check(identity.role, action_name)
     intent = intent_mod.check(user_request, action_name, resource_name, identity.role)
     deps = dependencies.dependents_of(db, resource_name)
-    affected, total = _record_counts(db, resource, action_name, parameters)
+    affected, total = _record_counts(db, resource, action_name, parameters,
+                                     owner_user_id=identity.user_id)
     rev = reversibility.classify(action_name, res)
     cons = consequences.analyse(action_name, res, deps, affected, total)
     blast = blast_radius.compute(action_name, res, deps, affected, total, rev["level"])
+    inject = injection_mod.scan(user_request)
+    tc = terms_mod.classify(action_name, res, affected, total, inject)
     traj = trajectory.analyse(db, identity.user_id, identity.role, action_name, resource_name)
     inv = invariants_mod.evaluate(identity.role, action_name, res, auth["authorized"],
                                   rev["level"], approval_present)
     verdict = policy.decide(
         authorization=auth, intent=intent, blast=blast, reversibility=rev,
-        trajectory=traj, invariants=inv, resource=res, approval_present=approval_present,
+        trajectory=traj, invariants=inv, resource=res, terms=tc, injection=inject,
+        approval_present=approval_present, confirmation_present=approval_present,
     )
 
     return {
@@ -108,5 +124,7 @@ def analyse(db: Session, identity: Identity, user_request: str, action_name: str
         "reversibility": rev,
         "trajectory": traj,
         "safety_invariants": inv,
+        "terms": tc,
+        "injection": inject,
         "policy_decision": verdict,
     }

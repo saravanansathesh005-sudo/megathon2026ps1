@@ -32,31 +32,52 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
+  authConfig: () => call<any>("/api/auth/config"),
+  googleStart: () => call<any>("/api/auth/google/start"),
   login: (username: string, password: string) =>
     call<any>("/api/login", { method: "POST", body: JSON.stringify({ username, password }) }),
+  logout: () => call<any>("/api/logout", { method: "POST" }),
   me: () => call<any>("/api/me"),
-  chat: (message: string) =>
-    call<any>("/api/chat", { method: "POST", body: JSON.stringify({ message }) }),
-  analyze: (payload: any) =>
-    call<any>("/api/actions/analyze", { method: "POST", body: JSON.stringify(payload) }),
+
+  conversations: () => call<any>("/api/conversations"),
+  newConversation: () => call<any>("/api/conversations", { method: "POST" }),
+  messages: (id: number) => call<any>("/api/conversations/" + id + "/messages"),
+  chat: (message: string, conversation_id?: number | null) =>
+    call<any>("/api/chat", {
+      method: "POST",
+      body: JSON.stringify({ message, conversation_id: conversation_id ?? null }),
+    }),
+
+  confirm: (id: number) =>
+    call<any>("/api/confirmations/" + id + "/confirm", { method: "POST" }),
+  cancel: (id: number) =>
+    call<any>("/api/confirmations/" + id + "/cancel", { method: "POST" }),
   execute: (action_id: number) =>
     call<any>("/api/actions/execute", { method: "POST", body: JSON.stringify({ action_id }) }),
-  actions: () => call<any>("/api/actions"),
-  approvals: () => call<any>("/api/approvals"),
-  approve: (id: number) => call<any>("/api/approvals/" + id + "/approve", { method: "POST" }),
-  reject: (id: number, reason = "") =>
-    call<any>("/api/approvals/" + id + "/reject", { method: "POST", body: JSON.stringify({ reason }) }),
-  dashboard: () => call<any>("/api/dashboard"),
-  audit: () => call<any>("/api/audit"),
-  verifyAudit: () => call<any>("/api/audit/verify"),
+
+  // Admin Security Terminal - read only. No write endpoints exist.
+  secOverview: () => call<any>("/api/admin/security/overview"),
+  secEvents: (q = "") => call<any>("/api/admin/security/events" + q),
+  secEvent: (id: number) => call<any>("/api/admin/security/events/" + id),
+  secUsers: () => call<any>("/api/admin/security/users"),
+  secTrajectory: (userId: number) =>
+    call<any>("/api/admin/security/users/" + userId + "/trajectory"),
+  secAudit: () => call<any>("/api/admin/security/audit"),
+
   reset: () => call<any>("/api/demo/reset", { method: "POST" }),
 };
 
 export const DECISION_STYLE: Record<string, string> = {
   ALLOW: "text-emerald-300 border-emerald-500/40 bg-emerald-500/10",
   REQUIRE_CONFIRMATION: "text-amber-300 border-amber-500/40 bg-amber-500/10",
-  REQUIRE_ADMIN_APPROVAL: "text-orange-300 border-orange-500/40 bg-orange-500/10",
   BLOCK: "text-rose-300 border-rose-500/40 bg-rose-500/10",
+};
+
+export const BAND_STYLE: Record<string, string> = {
+  NORMAL: "text-emerald-300 bg-emerald-500/10",
+  RISKY: "text-amber-300 bg-amber-500/10",
+  PRIVILEGED: "text-orange-300 bg-orange-500/10",
+  FORBIDDEN: "text-rose-300 bg-rose-500/10",
 };
 
 export const SEVERITY_STYLE: Record<string, string> = {

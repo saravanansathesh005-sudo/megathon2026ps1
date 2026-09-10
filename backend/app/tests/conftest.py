@@ -66,6 +66,16 @@ def secadmin(client):
     return _login(client, "secadmin", "secadmin123")
 
 
+@pytest.fixture
+def normal_user(client):
+    return _login(client, "user", "user123")
+
+
+@pytest.fixture
+def second_user(client):
+    return _login(client, "user2", "user2123")
+
+
 def auth(headers: dict) -> dict:
     return {"Authorization": headers["Authorization"]}
 

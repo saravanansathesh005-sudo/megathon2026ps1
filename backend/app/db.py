@@ -52,6 +52,26 @@ def init_db() -> None:
 
     Base.metadata.create_all(bind=engine)
 
+    # create_all() adds tables but never alters existing ones, so a database written
+    # by an older schema fails later with a confusing "no such column". Outside
+    # production we rebuild, loudly. Production needs a real migration.
+    stored = None
+    try:
+        with SessionLocal() as probe:
+            stored = models.SchemaVersion.current(probe)
+    except Exception:
+        stored = None
+
+    if stored is not None and stored != models.SCHEMA_VERSION:
+        if _settings.ENVIRONMENT == "production":
+            raise RuntimeError("database schema is v" + str(stored) + " but the code "
+                               "expects v" + str(models.SCHEMA_VERSION))
+        logger.warning("db.schema_rebuild", extra={"context": {
+            "found": stored, "expected": models.SCHEMA_VERSION,
+            "action": "dropping and recreating the demo database"}})
+        Base.metadata.drop_all(bind=engine)
+        Base.metadata.create_all(bind=engine)
+
     with SessionLocal() as session:
         models.SchemaVersion.ensure(session, models.SCHEMA_VERSION)
         session.commit()
