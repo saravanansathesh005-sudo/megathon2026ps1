@@ -22,12 +22,17 @@ class Settings(BaseSettings):
 
     # Identity
     SERVICE_NAME: str = "aegis-backend"
-    VERSION: str = "0.1.0"
-    PHASE: str = "0 - foundation"
+    VERSION: str = "0.2.0"
+    PHASE: str = "1 - security engine"
     ENVIRONMENT: str = "development"
 
     # Persistence
     DATABASE_URL: str = "sqlite:///./aegis.db"
+
+    # Auth
+    JWT_SECRET: str = "dev-only-insecure-secret-change-me"
+    TOKEN_TTL_MINUTES: int = 240
+    APPROVAL_TTL_SECONDS: int = 180
 
     # Observability
     LOG_LEVEL: str = "INFO"

@@ -16,6 +16,8 @@ def test_version_returns_identity(client):
 
 
 def test_version_reports_applied_schema_version(client):
+    from app.models import SCHEMA_VERSION
+
     body = client.get("/api/version").json()
 
-    assert body["schema_version"] == 1
+    assert body["schema_version"] == SCHEMA_VERSION

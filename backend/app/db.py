@@ -55,6 +55,9 @@ def init_db() -> None:
     with SessionLocal() as session:
         models.SchemaVersion.ensure(session, models.SCHEMA_VERSION)
         session.commit()
+        from app.services import seed
+
+        seed.ensure_seeded(session)
 
     logger.info(
         "db.initialized",

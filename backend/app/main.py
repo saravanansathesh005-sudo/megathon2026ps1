@@ -10,6 +10,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -23,6 +24,7 @@ from app.logging_config import (
     utc_now_iso,
 )
 from app.models import SchemaVersion
+from app.routes import router as api_router
 from app.schemas import HealthResponse, VersionResponse
 
 settings = get_settings()
@@ -55,6 +57,15 @@ app = FastAPI(
     version=settings.VERSION,
     lifespan=lifespan,
 )
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+app.include_router(api_router)
 
 
 @app.middleware("http")

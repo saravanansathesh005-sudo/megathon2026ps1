@@ -1,0 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background: #070a0f;
+  color: #d8e2ef;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}

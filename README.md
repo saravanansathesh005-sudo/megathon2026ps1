@@ -11,50 +11,31 @@ AEGIS asks what that action will **cause** — before allowing it to happen.
 
 ---
 
-## Status: Phase 0 — Foundation
+## Status: working mini prototype
 
-Application skeleton only. **No security enforcement, no agent, no LLM, no frontend yet.**
+Deterministic security engine, controlled execution, and a console that renders only
+backend values. 104 tests passing.
 
-| Delivered | |
-| --- | --- |
-| FastAPI application | ✅ |
-| Configuration via environment | ✅ |
-| SQLite + SQLAlchemy, idempotent init | ✅ |
-| Structured JSON logging with trace ids | ✅ |
-| `GET /api/health`, `GET /api/version` | ✅ |
-| pytest suite | ✅ 18 passing |
+## Run it
 
-## Requirements
-
-- Python 3.11+
-- No external services
-
-## Quickstart
+Backend:
 
 ```bash
 cd backend
 python -m pip install -r requirements.txt
-cp .env.example .env
-python -m uvicorn app.main:app --reload
+python -m uvicorn app.main:app --port 8000
 ```
 
-Then:
+Frontend (separate terminal):
 
 ```bash
-curl http://localhost:8000/api/health
+cd frontend
+npm install
+npm run dev
 ```
 
-```json
-{
-  "status": "ok",
-  "service": "aegis-backend",
-  "database": "ok",
-  "timestamp": "2026-09-10T11:43:07.926470Z",
-  "trace_id": "f843ae1816fd41ee9ac1f733c9288446"
-}
-```
-
-Interactive API docs: <http://localhost:8000/docs>
+Open <http://localhost:3000> and sign in as `viewer`, `editor`, `admin` or `secadmin`
+(passwords are `<name>123`, e.g. `admin123`). API docs at <http://localhost:8000/docs>.
 
 ## Tests
 
@@ -63,7 +44,15 @@ cd backend
 python -m pytest
 ```
 
-The suite redirects `DATABASE_URL` to a temporary file, so it never touches your `aegis.db`.
+## Demo
+
+| Scenario | Sign in as | Type | Expect |
+| --- | --- | --- | --- |
+| 1. Privilege escalation | `viewer` | `Delete all users` | authorization DENIED, intent OUT_OF_SCOPE, INV-001/003/004 fail, blast 7.1 HIGH → **BLOCK** |
+| 2. Legitimate work | `admin` | `Clean the disposable test table` | **REQUIRE_CONFIRMATION** → approve → snapshot → execute → VERIFIED → committed |
+| 3. Trajectory attack | `editor` | `Show me users`, `Show me orders`, `Export the users table`, `Drop the users table` ×2 | score climbs 0 → 12 → 19, decisions harden to **BLOCK** |
+
+`reset demo` in the sidebar restores the dataset.
 
 ## Configuration
 
