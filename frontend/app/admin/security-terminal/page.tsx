@@ -47,6 +47,8 @@ export default function SecurityTerminal() {
   const [detail, setDetail] = useState<any>(null);
   const [history, setHistory] = useState<any>(null);
   const [filter, setFilter] = useState("");
+  const [signingIn, setSigningIn] = useState(false);
+  const [signInError, setSignInError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const [o, e, u, a] = await Promise.all([
@@ -75,24 +77,52 @@ export default function SecurityTerminal() {
 
   if (state === "anon" || state === "denied") {
     return (
-      <main className="grid min-h-screen place-items-center px-4">
-        <div className="max-w-md rounded border border-rose-900/60 bg-rose-500/5 p-6 text-center">
-          <div className="font-mono text-xs uppercase tracking-widest text-rose-400">
-            403 · access denied
+      <main className="grid min-h-screen place-items-center px-4 font-mono">
+        <div className="w-full max-w-md rounded border border-rose-900/60 bg-rose-500/5 p-6">
+          <div className="text-center">
+            <div className="text-xs uppercase tracking-widest text-rose-400">
+              403 · access denied
+            </div>
+            <h1 className="mt-2 text-xl font-semibold text-slate-100">
+              Admin Security Terminal
+            </h1>
+            <p className="mt-3 text-sm text-slate-400">
+              {state === "anon"
+                ? "This area requires an authenticated observer account."
+                : "Signed in as " + (me?.username ?? "this account") +
+                  " (role " + (me?.role ?? "?") + "). That role has no security " +
+                  "observability access."}
+            </p>
+            <p className="mt-4 text-[11px] text-slate-600">
+              The backend enforces this. Role is resolved server-side; a role supplied
+              by the client is ignored.
+            </p>
           </div>
-          <h1 className="mt-2 text-xl font-semibold text-slate-100">
-            Admin Security Terminal
-          </h1>
-          <p className="mt-3 text-sm text-slate-400">
-            {state === "anon"
-              ? "This area requires an authenticated account."
-              : "Your account does not have security observability access."}
-          </p>
-          <p className="mt-4 font-mono text-[11px] text-slate-600">
-            The backend enforces this. Role is resolved server-side and a role supplied
-            by the client is ignored.
-          </p>
-          <a href="/" className="mt-5 inline-block text-xs text-slate-400 underline">
+
+          <form onSubmit={signIn}
+            className="mt-6 border-t border-slate-800 pt-5">
+            <p className="mb-3 text-center text-[10px] uppercase tracking-widest text-slate-500">
+              Observer sign-in
+            </p>
+            <input name="username" defaultValue="admin" autoComplete="username"
+              aria-label="Observer username"
+              className="mb-2 w-full rounded border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-200 outline-none focus:border-cyan-700" />
+            <input name="password" type="password" defaultValue="" autoComplete="current-password"
+              placeholder="password" aria-label="Observer password"
+              className="mb-3 w-full rounded border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-200 outline-none focus:border-cyan-700" />
+            <button type="submit" disabled={signingIn}
+              className="w-full rounded border border-cyan-700 bg-cyan-500/10 px-3 py-2 text-xs font-bold text-cyan-300 disabled:opacity-40">
+              {signingIn ? "verifying…" : "sign in"}
+            </button>
+            {signInError && (
+              <p className="mt-2 text-center text-[11px] text-rose-300">{signInError}</p>
+            )}
+            <p className="mt-3 text-center text-[10px] text-slate-600">
+              demo observers: admin / admin123 · secadmin / secadmin123
+            </p>
+          </form>
+
+          <a href="/" className="mt-5 block text-center text-xs text-slate-500 underline">
             Return to the assistant
           </a>
         </div>
@@ -277,6 +307,32 @@ export default function SecurityTerminal() {
 
   async function pick(id: number) { setDetail(await api.secEvent(id)); setTab("Events"); }
   async function showTrajectory(userId: number) { setHistory(await api.secTrajectory(userId)); }
+
+  /** Observer sign-in. The backend still decides whether this account may observe. */
+  async function signIn(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
+    setSigningIn(true); setSignInError(null);
+    try {
+      const { token } = await api.login(
+        String(form.get("username") || ""), String(form.get("password") || ""));
+      setToken(token);
+      const who = await api.me();
+      setMe(who);
+      if (!who.is_observer) {
+        setState("denied");
+        setSignInError("That account is not an observer.");
+      } else {
+        await load();
+        setState("ok");
+      }
+    } catch (err: any) {
+      setSignInError(err?.status === 401
+        ? "Incorrect username or password."
+        : "Sign-in unavailable. Is the backend running on :8000?");
+    }
+    setSigningIn(false);
+  }
 }
 
 function EventTable({ rows, onPick }: any) {
